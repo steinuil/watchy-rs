@@ -23,7 +23,7 @@ mod feature_offset {
     // loading the config file, which in the C driver is saved
     // and then restored every time it needs to read the features again.
     // I'm unsure as to why it starts 8 bytes before the end of the file.
-    pub const START: usize = super::CONFIG_FILE_SIZE - FEATURE_RW_SIZE;
+    pub const START: usize = super::CONFIG_FILE_SIZE - super::FEATURE_RW_SIZE;
 
     pub const STEP_COUNTER_SETTINGS_26: usize = 0x36;
 }
@@ -48,6 +48,13 @@ bitflags! {
         const STEP_ACTIVITY = 0b100;
         const TAP_WAKEUP    = 0b1000;
         const WRIST_TILT    = 0b10000;
+    }
+
+    pub struct SensorStatus: u8 {
+        const AUXILIARY_INTERFACE_OPERATION = 0b100;
+        const COMMAND_DECODER_READY         = 0b10000;
+        const AUXILIARY_SENSOR_DATA_READY   = 0b100000;
+        const ACCELEROMETER_DATA_READY      = 0b1000000;
     }
 }
 
@@ -210,6 +217,14 @@ impl<I2C: I2c<Error = Error<E>>, E, D: DelayUs> BMA423<I2C, D> {
         }
     }
 
+    // bma4_get_error_status
+    // pub async fn error_status(&mut self) -> Result<ErrorStatus, Error<E>> {}
+
+    pub async fn sensor_status(&mut self) -> Result<SensorStatus, Error<E>> {
+        let status = self.read_u8(register::STATUS).await?;
+        Ok(SensorStatus::from_bits_truncate(status))
+    }
+
     pub async fn power_mode(&mut self) -> Result<PowerMode, Error<E>> {
         let power_mode = self.read_u8(register::PWR_CONF).await?;
         Ok(PowerMode::from_bits_truncate(power_mode))
@@ -289,6 +304,27 @@ impl<I2C: I2c<Error = Error<E>>, E, D: DelayUs> BMA423<I2C, D> {
         })
         .await
     }
+
+    // TODO check for status & ACCELEROMETER_DATA_READY?
+    pub async fn accelerometer_xyz(&mut self) -> Result<(u16, u16, u16), Error<E>> {
+        let mut buf = [0; 6];
+        self.read_registers(register::DATA_8, &mut buf).await?;
+
+        let x = ((buf[1] as u16) << 8) | buf[0] as u16;
+        let y = ((buf[3] as u16) << 8) | buf[2] as u16;
+        let z = ((buf[5] as u16) << 8) | buf[4] as u16;
+
+        Ok((x / 0x10, y / 0x10, z / 0x10))
+    }
+
+    // TODO check for status & AUXILIARY_SENSOR_DATA_READY?
+    // pub async fn auxiliary_sensor_xyzr(&mut self) -> Result<(u16, u16, u16, u16), Error<E>> {
+    //     let mut buf = [0; 8];
+    //     self.read_registers(register::DATA_0, &mut buf).await?;
+
+    //     let x =
+    // }
+
     // Initialization
 
     pub async fn initialize(&mut self) -> Result<(), Error<E>> {
