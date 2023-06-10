@@ -1,0 +1,8 @@
+[package]
+name = "gdeh0154d67-async"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2.3.1"
+embedded-hal-async = "0.2.0-alpha.1"
