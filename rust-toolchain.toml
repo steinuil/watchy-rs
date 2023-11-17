@@ -1,2 +1,4 @@
 [toolchain]
 channel = "esp"
+components = ["rustfmt", "rustc-dev"]
+tagets = ["stensa-esp32-none-elf"]
