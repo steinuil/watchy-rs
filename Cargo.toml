@@ -1,5 +1,5 @@
 [workspace]
-members = ["bma423-async", "gdeh0154d67-async"]
+members = ["bma423-async", "gdeh0154d67-async", "pcf8563-async"]
 
 [package]
 name = "watchy-rs"

@@ -1,8 +1,9 @@
 [package]
-name = "bma423-async"
+name = "pcf8563-async"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 bitflags = "2.3.1"
 embedded-hal-async = "1.0.0-rc.1"
+

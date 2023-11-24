@@ -60,7 +60,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
 
 [[package]]
-name = "bma432"
+name = "bma423-async"
 version = "0.1.0"
 dependencies = [
  "bitflags",
@@ -528,6 +528,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
+name = "pcf8563-async"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "embedded-hal-async",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -816,6 +824,7 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 name = "watchy-rs"
 version = "0.1.0"
 dependencies = [
+ "bma423-async",
  "embassy-executor",
  "embassy-time",
  "esp-backtrace",
