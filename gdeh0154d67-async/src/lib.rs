@@ -5,6 +5,7 @@ use core::convert::Infallible;
 use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal_async::{
     delay::DelayUs,
+    digital::Wait,
     spi::{SpiBus, SpiDevice},
 };
 
@@ -69,7 +70,7 @@ where
     SPI: SpiBus,
     DC: OutputPin<Error = Infallible>,
     RES: OutputPin<Error = Infallible>,
-    Busy: InputPin<Error = Infallible>,
+    Busy: InputPin<Error = Infallible> + Wait,
     Delay: DelayUs,
 {
     pub fn new(
@@ -89,6 +90,7 @@ where
     }
 
     pub async fn initialize(&mut self) -> Result<(), Error> {
+        self.delay.delay_ms(10).await;
         self.hardware_reset().await?;
         self.software_reset().await?;
         self.set_driver_output().await?;
@@ -207,7 +209,7 @@ where
 
     async fn master_activation(&mut self) -> Result<(), Error> {
         self.write_command(command::MASTER_ACTIVATION).await?;
-        self.busy_wait().await?;
+        self.busy_wait().await;
         Ok(())
     }
 
@@ -222,14 +224,8 @@ where
         Ok(())
     }
 
-    // async fn set_border_waveform(&mut self, )
-
-    async fn busy_wait(&mut self) -> Result<(), Error> {
-        while self.busy.is_high().unwrap() {
-            self.delay.delay_ms(10).await;
-        }
-
-        Ok(())
+    async fn busy_wait(&mut self) {
+        self.busy.wait_for_low().await.unwrap()
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error> {
