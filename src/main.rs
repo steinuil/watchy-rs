@@ -87,11 +87,7 @@ async fn main(_spawner: Spawner) {
     )
     .unwrap();
 
-    let mut delay = Delay::new(&clocks);
-
     let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
-
-    // let mut bma423 = bma423_async::BMA423::new(0x18, &mut i2c, &mut delay);
 
     match pcf8563.read_datetime().await {
         Ok(time) => println!("time: {}", time),
@@ -106,6 +102,16 @@ async fn main(_spawner: Spawner) {
         // RTC alarm
         SleepSource::Ext0 => {
             println!("RTC alarm (display needs to be updated)");
+
+            let mut vib = io.pins.gpio13.into_push_pull_output();
+
+            let mut motor_on = false;
+            for _ in 0..4 {
+                motor_on = !motor_on;
+                println!("motor_on = {}", motor_on);
+                vib.set_output_high(motor_on);
+                Timer::after(Duration::from_millis(75)).await
+            }
         }
         // Button press
         SleepSource::Ext1 => match get_ext1_wakeup_button(&rtc) {
@@ -143,6 +149,8 @@ async fn main(_spawner: Spawner) {
         .await
         .unwrap();
     pcf8563.enable_alarm_interrupt().await.unwrap();
+
+    let mut delay = Delay::new(&clocks);
 
     rtc.sleep_deep(
         &[
