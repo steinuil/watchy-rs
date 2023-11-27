@@ -7,13 +7,15 @@
 
 https://watchy.sqfmi.com/docs/hardware
 
-- Microcontroller ESP32-PICO-D4: esp-idf-hal ?
+- Microcontroller [ESP32-PICO-D4](https://www.espressif.com/sites/default/files/documentation/esp32-pico-d4_datasheet_en.pdf)
 - E-Paper Display GDEH0154D67
   - https://docs.rs/gdeh0154d67/latest/gdeh0154d67/
   - https://gitlab.com/CasalI/gdeh0154d67
   - https://github.com/ZinggJM/GxEPD/blob/master/src/GxGDEH0154D67/GxGDEH0154D67.cpp
-- Real time clock PCF8563: https://docs.rs/pcf8563/latest/pcf8563/
-- 3-axis accelerometer BMA423: https://docs.rs/bma423/latest/bma423/
+- Real time clock [PCF8563](https://www.mouser.com/datasheet/2/302/PCF8563-1127619.pdf)
+  - https://docs.rs/pcf8563/latest/pcf8563/
+- 3-axis accelerometer [BMA423](https://watchy.sqfmi.com/assets/files/BST-BMA423-DS000-1509600-950150f51058597a6234dd3eaafbb1f0.pdf)
+  - https://docs.rs/bma423/latest/bma423/
 
 ## esp toolchain on Nix
 

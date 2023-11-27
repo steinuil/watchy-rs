@@ -208,7 +208,7 @@ impl<E> core::convert::From<E> for Error<E> {
     }
 }
 
-impl<I2C: I2c<Error = Error<E>>, E, D: DelayUs> BMA423<I2C, D> {
+impl<I2C: I2c<Error = E>, E, D: DelayUs> BMA423<I2C, D> {
     pub fn new(address: u8, i2c: I2C, delay: D) -> Self {
         BMA423 {
             address,
@@ -396,7 +396,8 @@ impl<I2C: I2c<Error = Error<E>>, E, D: DelayUs> BMA423<I2C, D> {
     // Register r/w utilities
 
     async fn read_registers(&mut self, register: u8, buf: &mut [u8]) -> Result<(), Error<E>> {
-        self.i2c.write_read(self.address, &[register], buf).await
+        self.i2c.write_read(self.address, &[register], buf).await?;
+        Ok(())
     }
 
     async fn read_u8(&mut self, register: u8) -> Result<u8, Error<E>> {
@@ -406,7 +407,8 @@ impl<I2C: I2c<Error = Error<E>>, E, D: DelayUs> BMA423<I2C, D> {
     }
 
     async fn write(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.i2c.write(self.address, data).await
+        self.i2c.write(self.address, data).await?;
+        Ok(())
     }
 
     // Feature configuration utilities

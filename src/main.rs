@@ -8,12 +8,13 @@ use embassy_time::{Duration, Timer};
 use esp32_hal::{
     clock::ClockControl,
     embassy,
-    peripherals::{Peripherals, RTC_CNTL},
+    i2c::I2C,
+    peripherals::{Interrupt, Peripherals, RTC_CNTL},
     prelude::*,
     reset::SleepSource,
     rtc_cntl::sleep::{Ext0WakeupSource, Ext1WakeupSource, WakeupLevel},
     timer::TimerGroup,
-    Delay, IO,
+    Delay, Rtc, IO,
 };
 use esp_backtrace as _;
 use esp_println::println;
@@ -42,24 +43,20 @@ const RTCIO_GPIO35_CHANNEL: u32 = 1 << 5;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 enum Button {
-    /// Bottom left button
-    Menu,
-    /// Top left button
-    Back,
-    /// Top right button
-    Up,
-    /// Bottom right button
-    Down,
+    BottomLeft,
+    TopLeft,
+    TopRight,
+    BottomRight,
 }
 
-fn get_ext1_wakeup_button(rtc_cntl: RTC_CNTL) -> Result<Button, u32> {
-    let wakeup_bits = rtc_cntl.ext_wakeup1_status.read().bits();
+fn get_ext1_wakeup_button(_rtc: &Rtc) -> Result<Button, u32> {
+    let wakeup_bits = unsafe { (*RTC_CNTL::PTR).ext_wakeup1_status.read() }.bits();
 
     match wakeup_bits {
-        RTCIO_GPIO26_CHANNEL => Ok(Button::Menu),
-        RTCIO_GPIO25_CHANNEL => Ok(Button::Back),
-        RTCIO_GPIO35_CHANNEL => Ok(Button::Up),
-        RTCIO_GPIO4_CHANNEL => Ok(Button::Down),
+        RTCIO_GPIO26_CHANNEL => Ok(Button::BottomLeft),
+        RTCIO_GPIO25_CHANNEL => Ok(Button::TopLeft),
+        RTCIO_GPIO35_CHANNEL => Ok(Button::TopRight),
+        RTCIO_GPIO4_CHANNEL => Ok(Button::BottomRight),
         _ => Err(wakeup_bits),
     }
 }
@@ -71,12 +68,37 @@ async fn main(_spawner: Spawner) {
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
-
-    let mut rtc = esp32_hal::Rtc::new(peripherals.RTC_CNTL);
+    embassy::init(&clocks, timer_group0.timer0);
 
     let mut io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    embassy::init(&clocks, timer_group0.timer0);
+    let mut i2c = I2C::new(
+        peripherals.I2C0,
+        io.pins.gpio21,
+        io.pins.gpio22,
+        400u32.kHz(),
+        &clocks,
+    );
+
+    // Interrupts need to be enabled for i2c to work
+    esp32_hal::interrupt::enable(
+        Interrupt::I2C_EXT0,
+        esp32_hal::interrupt::Priority::Priority1,
+    )
+    .unwrap();
+
+    let mut delay = Delay::new(&clocks);
+
+    let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
+
+    // let mut bma423 = bma423_async::BMA423::new(0x18, &mut i2c, &mut delay);
+
+    match pcf8563.read_datetime().await {
+        Ok(time) => println!("time: {}", time),
+        Err(e) => println!("error reading time: {:?}", e),
+    }
+
+    let mut rtc = Rtc::new(peripherals.RTC_CNTL);
 
     let cause = esp32_hal::reset::get_wakeup_cause();
 
@@ -86,17 +108,17 @@ async fn main(_spawner: Spawner) {
             println!("RTC alarm (display needs to be updated)");
         }
         // Button press
-        SleepSource::Ext1 => match get_ext1_wakeup_button(peripherals.RTC_CNTL) {
-            Ok(Button::Menu) => {
+        SleepSource::Ext1 => match get_ext1_wakeup_button(&rtc) {
+            Ok(Button::BottomLeft) => {
                 println!("Menu button pressed");
             }
-            Ok(Button::Back) => {
-                println!("Down button pressed");
+            Ok(Button::TopLeft) => {
+                println!("Back button pressed");
             }
-            Ok(Button::Up) => {
+            Ok(Button::TopRight) => {
                 println!("Up button pressed");
             }
-            Ok(Button::Down) => {
+            Ok(Button::BottomRight) => {
                 println!("Down button pressed");
             }
             Err(wakeup_status) => {
@@ -112,12 +134,20 @@ async fn main(_spawner: Spawner) {
         }
     }
 
-    let mut delay = Delay::new(&clocks);
+    let minute = pcf8563.read_time().await.unwrap().minute();
+    pcf8563
+        .set_alarm_interrupt(&pcf8563_async::AlarmConfig {
+            minute: Some(if minute >= 59 { 0 } else { minute + 1 }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    pcf8563.enable_alarm_interrupt().await.unwrap();
 
     rtc.sleep_deep(
         &[
             // should be low according to the C code
-            // &Ext0WakeupSource::new(&mut io.pins.gpio27, WakeupLevel::Low),
+            &Ext0WakeupSource::new(&mut io.pins.gpio27, WakeupLevel::Low),
             &Ext1WakeupSource::new(
                 &mut [
                     // Menu button
