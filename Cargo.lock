@@ -423,7 +423,9 @@ name = "gdeh0154d67-async"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "embedded-hal 1.0.0-rc.1",
  "embedded-hal-async",
+ "esp-println",
 ]
 
 [[package]]
@@ -861,9 +863,11 @@ dependencies = [
  "bma423-async",
  "embassy-executor",
  "embassy-time",
+ "embedded-hal-async",
  "esp-backtrace",
  "esp-println",
  "esp32-hal",
+ "gdeh0154d67-async",
  "pcf8563-async",
  "static_cell",
 ]
