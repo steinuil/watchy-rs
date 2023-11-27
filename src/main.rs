@@ -87,7 +87,7 @@ async fn main(_spawner: Spawner) {
     let reset_pin = io.pins.gpio9;
     let busy_pin = io.pins.gpio19;
 
-    let vibration_motor_pin = io.pins.gpio13.into_push_pull_output();
+    let vibration_motor_pin = io.pins.gpio13;
 
     let mut rtc_interrupt_pin = io.pins.gpio27;
 
@@ -109,11 +109,11 @@ async fn main(_spawner: Spawner) {
 
     let dma = Dma::new(system.dma);
 
-    let mut tx_descr = [0u32; 8 * 3];
-    let mut rx_descr = [0u32; 8 * 3];
+    let mut tx_descr = [0u32; 3];
+    let mut rx_descr = [0u32; 3];
 
     let spi = Spi::new_no_miso(
-        peripherals.SPI2,
+        peripherals.SPI3,
         sck_pin,
         mosi_pin,
         cs_pin,
@@ -121,12 +121,18 @@ async fn main(_spawner: Spawner) {
         esp32_hal::spi::SpiMode::Mode0,
         &clocks,
     )
-    .with_dma(dma.spi2channel.configure(
+    .with_dma(dma.spi3channel.configure(
         false,
         &mut tx_descr,
         &mut rx_descr,
         esp32_hal::dma::DmaPriority::Priority0,
     ));
+
+    esp32_hal::interrupt::enable(
+        Interrupt::SPI3_DMA,
+        esp32_hal::interrupt::Priority::Priority1,
+    )
+    .unwrap();
 
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
 

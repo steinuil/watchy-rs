@@ -8,7 +8,7 @@
 https://watchy.sqfmi.com/docs/hardware
 
 - Microcontroller [ESP32-PICO-D4](https://www.espressif.com/sites/default/files/documentation/esp32-pico-d4_datasheet_en.pdf)
-- E-Paper Display GDEH0154D67
+- E-Paper Display [GDEH0154D67](https://www.e-paper-display.com/GDEH0154D67%20V2.0%20Specificationc58c.pdf) [SSD1681](https://www.e-paper-display.com/SSD1681%20V0.13%20Spec903d.pdf)
   - https://docs.rs/gdeh0154d67/latest/gdeh0154d67/
   - https://gitlab.com/CasalI/gdeh0154d67
   - https://github.com/ZinggJM/GxEPD/blob/master/src/GxGDEH0154D67/GxGDEH0154D67.cpp
