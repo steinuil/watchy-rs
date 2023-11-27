@@ -70,15 +70,20 @@ async fn main(_spawner: Spawner) {
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timer_group0.timer0);
 
-    let mut io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let mut i2c = I2C::new(
-        peripherals.I2C0,
-        io.pins.gpio21,
-        io.pins.gpio22,
-        400u32.kHz(),
-        &clocks,
-    );
+    let sda_pin = io.pins.gpio21;
+    let scl_pin = io.pins.gpio22;
+    let vibration_motor_pin = io.pins.gpio13;
+    let mut rtc_interrupt_pin = io.pins.gpio27;
+    let mut button_bottom_left_pin = io.pins.gpio26;
+    let mut button_top_left_pin = io.pins.gpio25;
+    let mut button_top_right_pin = io.pins.gpio35;
+    let mut button_bottom_right_pin = io.pins.gpio4;
+
+    // TODO: maybe use an embassy_sync::mutex::Mutex to share the i2c bus
+    // between the devices
+    let mut i2c = I2C::new(peripherals.I2C0, sda_pin, scl_pin, 400u32.kHz(), &clocks);
 
     // Interrupts need to be enabled for i2c to work
     esp32_hal::interrupt::enable(
@@ -103,7 +108,7 @@ async fn main(_spawner: Spawner) {
         SleepSource::Ext0 => {
             println!("RTC alarm (display needs to be updated)");
 
-            let mut vib = io.pins.gpio13.into_push_pull_output();
+            let mut vib = vibration_motor_pin.into_push_pull_output();
 
             let mut motor_on = false;
             for _ in 0..4 {
@@ -155,17 +160,13 @@ async fn main(_spawner: Spawner) {
     rtc.sleep_deep(
         &[
             // should be low according to the C code
-            &Ext0WakeupSource::new(&mut io.pins.gpio27, WakeupLevel::Low),
+            &Ext0WakeupSource::new(&mut rtc_interrupt_pin, WakeupLevel::Low),
             &Ext1WakeupSource::new(
                 &mut [
-                    // Menu button
-                    &mut io.pins.gpio26,
-                    // Back button
-                    &mut io.pins.gpio25,
-                    // Down button
-                    &mut io.pins.gpio4,
-                    // Up button
-                    &mut io.pins.gpio35,
+                    &mut button_bottom_left_pin,
+                    &mut button_top_left_pin,
+                    &mut button_top_right_pin,
+                    &mut button_bottom_right_pin,
                 ],
                 WakeupLevel::High,
             ),
