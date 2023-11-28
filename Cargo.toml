@@ -18,3 +18,4 @@ bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
 gdeh0154d67-async = { path = "./gdeh0154d67-async" }
 embedded-graphics = "0.8.1"
+arrayvec = { version = "0.7.4", default-features = false }

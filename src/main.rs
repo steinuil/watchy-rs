@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use arrayvec::ArrayString;
+use core::fmt::Write;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embedded_graphics::{
@@ -151,9 +153,11 @@ async fn main(_spawner: Spawner) {
                         .draw(&mut gdeh0154d67)
                         .unwrap();
 
-                    // let time = pcf8563.read_time().await.unwrap();
+                    let time = pcf8563.read_time().await.unwrap();
+                    let mut t = ArrayString::<5>::new();
+                    write!(&mut t, "{:02}:{:02}", time.hour(), time.minute()).unwrap();
                     Text::with_baseline(
-                        "ayy lmao",
+                        t.as_str(),
                         Point::new(4, 200 - 15 - 4),
                         MonoTextStyle::new(
                             &embedded_graphics::mono_font::ascii::FONT_9X15,
