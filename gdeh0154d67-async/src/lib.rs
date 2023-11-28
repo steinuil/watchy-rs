@@ -6,6 +6,11 @@
 
 use core::convert::Infallible;
 
+use embedded_graphics_core::{
+    pixelcolor::BinaryColor,
+    prelude::{DrawTarget, OriginDimensions},
+    Pixel,
+};
 use embedded_hal::{
     digital::{InputPin, OutputPin},
     spi::SpiDevice,
@@ -72,6 +77,7 @@ pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
+    buffer: [u8; 200 * 200 / 8],
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
@@ -95,6 +101,7 @@ where
             reset: reset_pin,
             busy: busy_pin,
             delay,
+            buffer: [0xFF; 200 * 200 / 8],
         }
     }
 
@@ -113,10 +120,15 @@ where
         Ok(())
     }
 
-    pub async fn draw(&mut self, data: &[u8]) -> Result<(), Error<E>> {
+    pub async fn draw(&mut self) -> Result<(), Error<E>> {
         self.set_ram_x_address_position(0)?;
         self.set_ram_y_address_position(0)?;
-        self.write_bw_ram(data)?;
+        // self.write_bw_ram(&self.buffer[..])?;
+        self.dc.set_low().unwrap();
+        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.dc.set_high().unwrap();
+        self.spi.write(&self.buffer[..])?;
+        // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
         self.set_display_update_sequence(0xc7)?;
         self.master_activation().await?;
         self.set_deep_sleep_mode(DeepSleepMode::ResetRAM)?;
@@ -246,6 +258,41 @@ where
     fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap();
         self.spi.write(data)?;
+        Ok(())
+    }
+}
+
+impl<SPI: SpiDevice, DC, RES, Busy, Delay> OriginDimensions
+    for GDEH0154D67<SPI, DC, RES, Busy, Delay>
+{
+    fn size(&self) -> embedded_graphics_core::prelude::Size {
+        embedded_graphics_core::prelude::Size {
+            width: 200,
+            height: 200,
+        }
+    }
+}
+
+impl<SPI: SpiDevice<Error = E>, DC, RES, Busy, Delay, E> DrawTarget
+    for GDEH0154D67<SPI, DC, RES, Busy, Delay>
+{
+    type Color = BinaryColor;
+    type Error = Error<E>;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = embedded_graphics_core::Pixel<Self::Color>>,
+    {
+        for Pixel(pos, color) in pixels.into_iter() {
+            if let Ok((x @ 0..=199, y @ 0..=199)) = pos.try_into() {
+                let index = (x + y * 200) as usize;
+                self.buffer[index / 8] &= !(1 << (7 - (index % 8)));
+                if color.is_off() {
+                    self.buffer[index / 8] |= 1 << (7 - (index % 8));
+                }
+            }
+        }
+
         Ok(())
     }
 }

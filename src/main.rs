@@ -4,6 +4,13 @@
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use embedded_graphics::{
+    mono_font::MonoTextStyle,
+    pixelcolor::BinaryColor,
+    prelude::*,
+    primitives::{Ellipse, PrimitiveStyle, StyledDrawable},
+    text::Text,
+};
 use esp32_hal::{
     clock::ClockControl,
     embassy,
@@ -106,6 +113,8 @@ async fn main(_spawner: Spawner) {
 
     let cause = esp32_hal::reset::get_wakeup_cause();
 
+    let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
+
     match cause {
         // RTC alarm
         SleepSource::Ext0 => {
@@ -135,8 +144,28 @@ async fn main(_spawner: Spawner) {
                         embassy_time::Delay,
                     );
 
+                    // embedded_graphics::primitives::Ellipse::new(Point::new())
+
+                    Ellipse::new(Point::new(20, 20), Size::new(160, 160))
+                        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                        .draw(&mut gdeh0154d67)
+                        .unwrap();
+
+                    // let time = pcf8563.read_time().await.unwrap();
+                    Text::with_baseline(
+                        "ayy lmao",
+                        Point::new(4, 200 - 15 - 4),
+                        MonoTextStyle::new(
+                            &embedded_graphics::mono_font::ascii::FONT_9X15,
+                            BinaryColor::On,
+                        ),
+                        embedded_graphics::text::Baseline::Top,
+                    )
+                    .draw(&mut gdeh0154d67)
+                    .unwrap();
+
                     gdeh0154d67.initialize().await.unwrap();
-                    gdeh0154d67.draw(&[0xAA; (200 * 200) / 8]).await.unwrap();
+                    gdeh0154d67.draw().await.unwrap();
                 }
             }
             Ok(Button::TopLeft) => {
@@ -162,12 +191,10 @@ async fn main(_spawner: Spawner) {
     }
 
     {
-        let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
-
-        match pcf8563.read_datetime().await {
-            Ok(time) => println!("time: {}", time),
-            Err(e) => println!("error reading time: {:?}", e),
-        }
+        // match pcf8563.read_datetime().await {
+        //     Ok(time) => println!("time: {}", time),
+        //     Err(e) => println!("error reading time: {:?}", e),
+        // }
 
         let minute = pcf8563.read_time().await.unwrap().minute();
         pcf8563

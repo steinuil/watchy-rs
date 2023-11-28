@@ -17,3 +17,4 @@ embedded-hal-async = "1.0.0-rc.1"
 bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
 gdeh0154d67-async = { path = "./gdeh0154d67-async" }
+embedded-graphics = "0.8.1"
