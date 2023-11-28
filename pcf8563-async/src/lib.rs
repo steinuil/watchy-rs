@@ -38,12 +38,6 @@ impl<E> core::convert::From<E> for Error<E> {
     }
 }
 
-// impl<E> core::convert::From<time::Error> for Error<E> {
-//     fn from(err: time::Error) -> Self {
-//         Error::Time(err)
-//     }
-// }
-
 fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
     match weekday {
         0 => Ok(time::Weekday::Sunday),
@@ -125,7 +119,7 @@ mod mask {
     pub const SECOND: u8 = 0b01111111;
 }
 
-const DISABLED: u8 = 0x80;
+const ALARM_DISABLED: u8 = 0x80;
 
 pub struct PCF8563<I2C> {
     address: u8,
@@ -142,21 +136,21 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     pub async fn reset(&mut self) -> Result<(), Error<E>> {
         self.write(&[
             register::CONTROL_STATUS_1,
-            0x00, // control/status 1
-            0x00, // control/status 2
-            0x01, // second
-            0x01, // minute
-            0x01, // hour
-            0x01, // day
-            0x01, // weekday
-            0x01, // month + century
-            0x01, // year
-            0x80, // minute alarm value reset to 00
-            0x80, // hour alarm value reset to 00
-            0x80, // day alarm value reset to 00
-            0x80, // weekday alarm value reset to 00
-            0x00, // set SQW
-            0x00, // timer off
+            0x00,           // control/status 1
+            0x00,           // control/status 2
+            0x01,           // second
+            0x01,           // minute
+            0x01,           // hour
+            0x01,           // day
+            0x01,           // weekday
+            0x01,           // month + century
+            0x01,           // year
+            ALARM_DISABLED, // minute alarm value reset to 00
+            ALARM_DISABLED, // hour alarm value reset to 00
+            ALARM_DISABLED, // day alarm value reset to 00
+            ALARM_DISABLED, // weekday alarm value reset to 00
+            0x00,           // set SQW
+            0x00,           // timer off
         ])
         .await
     }
@@ -242,12 +236,12 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     pub async fn set_alarm_interrupt(&mut self, alarm: &AlarmConfig) -> Result<(), Error<E>> {
         self.write(&[
             register::ALARM_MINUTE,
-            alarm.minute.map_or(DISABLED, dec_to_bcd),
-            alarm.hour.map_or(DISABLED, dec_to_bcd),
-            alarm.day.map_or(DISABLED, dec_to_bcd),
+            alarm.minute.map_or(ALARM_DISABLED, dec_to_bcd),
+            alarm.hour.map_or(ALARM_DISABLED, dec_to_bcd),
+            alarm.day.map_or(ALARM_DISABLED, dec_to_bcd),
             alarm
                 .weekday
-                .map_or(DISABLED, |w| dec_to_bcd(w.number_days_from_sunday())),
+                .map_or(ALARM_DISABLED, |w| dec_to_bcd(w.number_days_from_sunday())),
         ])
         .await
     }

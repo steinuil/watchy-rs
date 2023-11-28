@@ -50,6 +50,7 @@ bitflags! {
         const WRIST_TILT    = 0b10000;
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct SensorStatus: u8 {
         const AUXILIARY_INTERFACE_OPERATION = 0b100;
         const COMMAND_DECODER_READY         = 0b10000;

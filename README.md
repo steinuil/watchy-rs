@@ -25,6 +25,17 @@ https://watchy.sqfmi.com/docs/hardware
 
 ## TODO
 
-- BMA423: add states for initialized/fullpower/powersave like in the non-async crate
-- GDEH0154D67
+- BMA423
+  - test on the Watchy
+  - add states for initialized/fullpower/powersave like in the non-async crate
+- GDEH0154D67:
+  - partial updates
+  - lots of configurability stuff
+  - could try doing grayscale by manipulating the border waveform
+    - https://hackaday.io/project/11537-nekocal-an-e-ink-calendar/log/72153-can-you-get-32-level-grayscale-out-of-an-e-ink-display
+    - https://github.com/zkarcher/FancyEPD
 - PCF8563
+  - better error handling
+  - functionality missing
+  - provide the raw time/date numbers from the registers and add a `time` feature that enables support for the `time` crate
+- Wi-fi and BLE: https://github.com/esp-rs/esp-wifi

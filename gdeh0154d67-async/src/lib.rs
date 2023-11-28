@@ -238,6 +238,8 @@ where
     }
 
     async fn busy_wait(&mut self) {
+        // TODO would be nice to just use self.busy.wait_for_low().await but it doesn't
+        // work right now.
         while self.busy.is_high().unwrap() {
             self.delay.delay_ms(10).await;
         }
