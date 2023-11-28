@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
-#![allow(clippy::empty_loop)]
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
@@ -9,33 +8,16 @@ use esp32_hal::{
     clock::ClockControl,
     embassy,
     i2c::I2C,
-    pdma::{Dma, Spi3DmaChannel},
     peripherals::{Interrupt, Peripherals, RTC_CNTL},
     prelude::*,
     reset::SleepSource,
     rtc_cntl::sleep::{Ext0WakeupSource, Ext1WakeupSource, WakeupLevel},
-    spi::master::{prelude::*, Spi, SpiBusController, SpiBusDevice},
+    spi::master::{Spi, SpiBusController, SpiBusDevice},
     timer::TimerGroup,
     Delay, Rtc, IO,
 };
 use esp_backtrace as _;
 use esp_println::println;
-
-#[embassy_executor::task]
-async fn run1() {
-    loop {
-        println!("ayy");
-        Timer::after(Duration::from_millis(1000)).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn run2() {
-    loop {
-        println!("lmao");
-        Timer::after(Duration::from_millis(2000)).await;
-    }
-}
 
 const RTCIO_GPIO4_CHANNEL: u32 = 1 << 10;
 const RTCIO_GPIO25_CHANNEL: u32 = 1 << 6;
@@ -107,32 +89,18 @@ async fn main(_spawner: Spawner) {
     )
     .unwrap();
 
-    let dma = Dma::new(system.dma);
-
-    let mut tx_descr = [0u32; 3];
-    let mut rx_descr = [0u32; 3];
-
-    let spi = Spi::new_no_miso(
+    let spi = Spi::new_no_cs_no_miso(
         peripherals.SPI3,
         sck_pin,
         mosi_pin,
-        cs_pin,
         20u32.MHz(),
         esp32_hal::spi::SpiMode::Mode0,
         &clocks,
-    )
-    .with_dma(dma.spi3channel.configure(
-        false,
-        &mut tx_descr,
-        &mut rx_descr,
-        esp32_hal::dma::DmaPriority::Priority0,
-    ));
-
-    esp32_hal::interrupt::enable(
-        Interrupt::SPI3_DMA,
-        esp32_hal::interrupt::Priority::Priority1,
-    )
-    .unwrap();
+    );
+    esp32_hal::interrupt::enable(Interrupt::SPI3, esp32_hal::interrupt::Priority::Priority1)
+        .unwrap();
+    let bus_controller = SpiBusController::from_spi(spi);
+    let spi = SpiBusDevice::new(&bus_controller, cs_pin);
 
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
 
@@ -167,15 +135,8 @@ async fn main(_spawner: Spawner) {
                         embassy_time::Delay,
                     );
 
-                    println!("display acquired");
-
                     gdeh0154d67.initialize().await.unwrap();
-                    println!("display initialized");
-                    gdeh0154d67
-                        .draw(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
-                        .await
-                        .unwrap();
-                    println!("drawn");
+                    gdeh0154d67.draw(&[0xAA; (200 * 200) / 8]).await.unwrap();
                 }
             }
             Ok(Button::TopLeft) => {
