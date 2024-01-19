@@ -37,9 +37,9 @@
         };
 
         devShell = pkgs.mkShell {
-          nativeBuildInputs = [ toolchain ];
+          # nativeBuildInputs = [ toolchain ];
 
-          buildInputs = with pkgs; [ toolchain lldb ];
+          buildInputs = with pkgs; [ cargo-espflash lldb ];
         };
       });
 }

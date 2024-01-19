@@ -3,7 +3,7 @@
 mod register;
 
 use bitflags::bitflags;
-use embedded_hal_async::{delay::DelayUs, i2c::I2c};
+use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 
 const CHIP_ID: u8 = 0x13;
 
@@ -178,7 +178,7 @@ enum InternalStatusMessage {
     SensorStopped = 0x04,
 }
 
-pub struct BMA423<I2C, D: DelayUs> {
+pub struct BMA423<I2C, D: DelayNs> {
     address: u8,
     i2c: I2C,
     delay: D,
@@ -209,7 +209,7 @@ impl<E> core::convert::From<E> for Error<E> {
     }
 }
 
-impl<I2C: I2c<Error = E>, E, D: DelayUs> BMA423<I2C, D> {
+impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
     pub fn new(address: u8, i2c: I2C, delay: D) -> Self {
         BMA423 {
             address,

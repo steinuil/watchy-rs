@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+mod watchy;
+
 use arrayvec::ArrayString;
 use core::fmt::Write;
 use embassy_executor::Spawner;
@@ -10,51 +12,30 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
     prelude::*,
-    primitives::{Ellipse, PrimitiveStyle, StyledDrawable},
+    primitives::{Ellipse, PrimitiveStyle},
     text::Text,
 };
+use embedded_hal_async::delay::DelayNs;
+use embedded_hal_async::spi::SpiDevice;
 use esp32_hal::{
     clock::ClockControl,
+    dma::DmaPriority,
     embassy,
     i2c::I2C,
-    peripherals::{Interrupt, Peripherals, RTC_CNTL},
+    pdma::Dma,
+    peripherals::{Interrupt, Peripherals},
     prelude::*,
-    reset::SleepSource,
     rtc_cntl::sleep::{Ext0WakeupSource, Ext1WakeupSource, WakeupLevel},
-    spi::master::{Spi, SpiBusController, SpiBusDevice},
+    spi::{
+        master::{dma::WithDmaSpi3, Spi},
+        SpiMode,
+    },
     timer::TimerGroup,
-    Delay, Rtc, IO,
+    FlashSafeDma, Rtc, IO,
 };
 use esp_backtrace as _;
 use esp_println::println;
-
-const RTCIO_GPIO4_CHANNEL: u32 = 1 << 10;
-const RTCIO_GPIO25_CHANNEL: u32 = 1 << 6;
-const RTCIO_GPIO26_CHANNEL: u32 = 1 << 7;
-const RTCIO_GPIO35_CHANNEL: u32 = 1 << 5;
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy)]
-enum Button {
-    BottomLeft,
-    TopLeft,
-    TopRight,
-    BottomRight,
-}
-
-fn get_ext1_wakeup_button(_rtc: &Rtc) -> Result<Button, u32> {
-    // TODO when esp32_hal lets you read the wakeup status, it'd be nice to use that
-    // instead of using unsafe.
-    let wakeup_bits = unsafe { (*RTC_CNTL::PTR).ext_wakeup1_status.read() }.bits();
-
-    match wakeup_bits {
-        RTCIO_GPIO26_CHANNEL => Ok(Button::BottomLeft),
-        RTCIO_GPIO25_CHANNEL => Ok(Button::TopLeft),
-        RTCIO_GPIO35_CHANNEL => Ok(Button::TopRight),
-        RTCIO_GPIO4_CHANNEL => Ok(Button::BottomRight),
-        _ => Err(wakeup_bits),
-    }
-}
+use watchy::VibrationMotor;
 
 #[main]
 async fn main(_spawner: Spawner) {
@@ -67,130 +48,107 @@ async fn main(_spawner: Spawner) {
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    let sda_pin = io.pins.gpio21;
-    let scl_pin = io.pins.gpio22;
+    let mut pins = watchy::Pins::new(io.pins);
 
-    let sck_pin = io.pins.gpio18;
-    let mosi_pin = io.pins.gpio23;
-    let cs_pin = io.pins.gpio5;
+    let mut i2c = watchy::init_i2c(peripherals.I2C0, pins.i2c, &clocks);
 
-    let dc_pin = io.pins.gpio10;
-    let reset_pin = io.pins.gpio9;
-    let busy_pin = io.pins.gpio19;
-
-    let vibration_motor_pin = io.pins.gpio13;
-
-    let mut rtc_interrupt_pin = io.pins.gpio27;
-
-    let mut button_bottom_left_pin = io.pins.gpio26;
-    let mut button_top_left_pin = io.pins.gpio25;
-    let mut button_top_right_pin = io.pins.gpio35;
-    let mut button_bottom_right_pin = io.pins.gpio4;
-
-    // TODO: maybe use an embassy_sync::mutex::Mutex to share the i2c bus
-    // between the devices
-    let mut i2c = I2C::new(peripherals.I2C0, sda_pin, scl_pin, 400u32.kHz(), &clocks);
-
-    // Interrupts need to be enabled for i2c to work
-    esp32_hal::interrupt::enable(
-        Interrupt::I2C_EXT0,
-        esp32_hal::interrupt::Priority::Priority1,
-    )
-    .unwrap();
-
-    let spi = Spi::new_no_cs_no_miso(
-        peripherals.SPI3,
-        sck_pin,
-        mosi_pin,
-        20u32.MHz(),
-        esp32_hal::spi::SpiMode::Mode0,
-        &clocks,
-    );
-    esp32_hal::interrupt::enable(Interrupt::SPI3, esp32_hal::interrupt::Priority::Priority1)
-        .unwrap();
-    let bus_controller = SpiBusController::from_spi(spi);
-    let spi = SpiBusDevice::new(&bus_controller, cs_pin);
-
-    let mut rtc = Rtc::new(peripherals.RTC_CNTL);
-
-    let cause = esp32_hal::reset::get_wakeup_cause();
+    // CHECK: interrupts for I2C/SPI/GPIO should be enabled automatically
 
     let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
 
-    match cause {
-        // RTC alarm
-        SleepSource::Ext0 => {
-            println!("RTC alarm (display needs to be updated)");
+    let mut vibration_motor = VibrationMotor::new(pins.vibration_motor);
 
-            let mut vib = vibration_motor_pin.into_push_pull_output();
+    let (mut tx_descriptors, mut rx_descriptors) = esp32_hal::dma_descriptors!(8);
 
-            let mut motor_on = false;
-            for _ in 0..4 {
-                motor_on = !motor_on;
-                println!("motor_on = {}", motor_on);
-                vib.set_output_high(motor_on);
-                Timer::after(Duration::from_millis(75)).await
-            }
-        }
-        // Button press
-        SleepSource::Ext1 => match get_ext1_wakeup_button(&rtc) {
-            Ok(Button::BottomLeft) => {
-                println!("Menu button pressed");
+    let dma = Dma::new(system.dma);
 
-                {
-                    let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
-                        spi,
-                        dc_pin.into_push_pull_output(),
-                        reset_pin.into_push_pull_output(),
-                        busy_pin.into_pull_up_input(),
-                        embassy_time::Delay,
-                    );
+    let spi = Spi::new(peripherals.SPI3, 20_u32.MHz(), SpiMode::Mode0, &clocks)
+        .with_sck(pins.spi.sck)
+        .with_mosi(pins.spi.mosi)
+        .with_dma(dma.spi3channel.configure(
+            false,
+            &mut tx_descriptors,
+            &mut rx_descriptors,
+            DmaPriority::Priority0,
+        ));
 
-                    // embedded_graphics::primitives::Ellipse::new(Point::new())
+    // let spi = FlashSafeDma::<_, 8>::new(spi);
 
-                    Ellipse::new(Point::new(20, 20), Size::new(160, 160))
-                        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                        .draw(&mut gdeh0154d67)
-                        .unwrap();
+    let mut spi =
+        embedded_hal_bus::spi::ExclusiveDevice::new(spi, pins.spi.cs, embassy_time::Delay);
 
-                    let time = pcf8563.read_time().await.unwrap();
-                    let mut t = ArrayString::<5>::new();
-                    write!(&mut t, "{:02}:{:02}", time.hour(), time.minute()).unwrap();
-                    Text::with_baseline(
-                        t.as_str(),
-                        Point::new(4, 200 - 15 - 4),
-                        MonoTextStyle::new(
-                            &embedded_graphics::mono_font::ascii::FONT_9X15,
-                            BinaryColor::On,
-                        ),
-                        embedded_graphics::text::Baseline::Top,
-                    )
-                    .draw(&mut gdeh0154d67)
-                    .unwrap();
+    // let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
+    //     spi,
+    //     pins.display.dc,
+    //     pins.display.reset,
+    //     pins.display.busy,
+    //     embassy_time::Delay,
+    // );
 
-                    gdeh0154d67.initialize().await.unwrap();
-                    gdeh0154d67.draw().await.unwrap();
-                }
-            }
-            Ok(Button::TopLeft) => {
-                println!("Back button pressed");
-            }
-            Ok(Button::TopRight) => {
-                println!("Up button pressed");
-            }
-            Ok(Button::BottomRight) => {
-                println!("Down button pressed");
-            }
-            Err(wakeup_status) => {
-                println!("wakeup_status bitmask not recognized: {}", wakeup_status);
-            }
-        },
-        // Booted
-        SleepSource::Undefined => {
+    match watchy::get_wakeup_cause(&peripherals.LPWR) {
+        watchy::WakeupCause::Reset => {
             println!("Booted");
         }
-        _ => {
-            println!("unknown wakeup cause: {:?}", cause);
+        watchy::WakeupCause::ExternalRtcAlarm => {
+            println!("RTC alarm");
+
+            vibration_motor
+                .vibrate_linear(2, Duration::from_millis(75))
+                .await;
+        }
+        watchy::WakeupCause::ButtonPress(watchy::Button::BottomLeft) => {
+            // HW reset
+            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+            pins.display.reset.set_low().unwrap();
+            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+            pins.display.reset.set_high().unwrap();
+            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+
+            println!("HW reset done");
+
+            // SW reset
+            pins.display.dc.set_low().unwrap();
+            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+            println!("DC pin set low");
+            spi.write(&[0x12]).await.unwrap();
+            println!("written SW_RESET");
+            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+
+            println!("SW reset done");
+
+            // Ellipse::new(Point::new(20, 20), Size::new(160, 160))
+            //     .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            //     .draw(&mut gdeh0154d67)
+            //     .unwrap();
+
+            // let time = pcf8563.read_time().await.unwrap();
+            // let mut t = ArrayString::<5>::new();
+            // write!(&mut t, "{:02}:{:02}", time.hour(), time.minute()).unwrap();
+            // Text::with_baseline(
+            //     t.as_str(),
+            //     Point::new(4, 200 - 15 - 4),
+            //     MonoTextStyle::new(
+            //         &embedded_graphics::mono_font::ascii::FONT_9X15,
+            //         BinaryColor::On,
+            //     ),
+            //     embedded_graphics::text::Baseline::Top,
+            // )
+            // .draw(&mut gdeh0154d67)
+            // .unwrap();
+
+            println!("lmao");
+            // gdeh0154d67.initialize().await.unwrap();
+            println!("tfw");
+            // gdeh0154d67.draw().await.unwrap();
+        }
+        watchy::WakeupCause::ButtonPress(button) => {
+            println!("Button pressed: {:?}", button);
+        }
+        watchy::WakeupCause::UnknownExt1(mask) => {
+            println!("Unknown EXT1 mask: {}", mask);
+        }
+        watchy::WakeupCause::Unknown(source) => {
+            println!("Unknown source: {:?}", source);
         }
     }
 
@@ -211,22 +169,7 @@ async fn main(_spawner: Spawner) {
         pcf8563.enable_alarm_interrupt().await.unwrap();
     }
 
-    let mut delay = Delay::new(&clocks);
-
-    rtc.sleep_deep(
-        &[
-            // should be low according to the C code
-            &Ext0WakeupSource::new(&mut rtc_interrupt_pin, WakeupLevel::Low),
-            &Ext1WakeupSource::new(
-                &mut [
-                    &mut button_bottom_left_pin,
-                    &mut button_top_left_pin,
-                    &mut button_top_right_pin,
-                    &mut button_bottom_right_pin,
-                ],
-                WakeupLevel::High,
-            ),
-        ],
-        &mut delay,
-    );
+    let rtc = Rtc::new(peripherals.LPWR);
+    let delay = esp32_hal::Delay::new(&clocks);
+    watchy::sleep_deep(rtc, delay, pins.external_rtc, pins.buttons);
 }
