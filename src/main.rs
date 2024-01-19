@@ -5,8 +5,8 @@
 mod watchy;
 
 use embassy_executor::Spawner;
-use embedded_hal::spi::SpiDevice;
 use embedded_hal_async::delay::DelayNs;
+use embedded_hal_async::spi::SpiDevice;
 use esp32_hal::{
     clock::ClockControl,
     dma::DmaPriority,
@@ -72,7 +72,7 @@ async fn main(_spawner: Spawner) {
     // SW reset
     dc_pin.set_low().unwrap();
     println!("DC pin set low");
-    spi.write(&[0x12]).unwrap();
+    spi.write(&[0x12]).await.unwrap();
     println!("written SW_RESET");
     DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
 
