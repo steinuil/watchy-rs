@@ -11,8 +11,11 @@ use embedded_graphics_core::{
     prelude::{DrawTarget, OriginDimensions},
     Pixel,
 };
-use embedded_hal::digital::{InputPin, OutputPin};
-use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiDevice};
+use embedded_hal::{
+    digital::{InputPin, OutputPin},
+    spi::{Operation, SpiDevice},
+};
+use embedded_hal_async::{delay::DelayNs, digital::Wait};
 
 #[derive(Debug)]
 pub enum Error<E> {
@@ -101,17 +104,28 @@ where
 
     pub async fn initialize(&mut self) -> Result<(), Error<E>> {
         self.delay.delay_ms(10).await;
+        esp_println::println!("0");
         self.hardware_reset().await?;
+        esp_println::println!("1");
         self.software_reset().await?;
+        esp_println::println!("2");
         self.set_driver_output().await?;
+        esp_println::println!("3");
         self.set_data_entry_mode().await?;
+        esp_println::println!("4");
         self.set_ram_x_start_end_position(0, 200).await?;
+        esp_println::println!("5");
         self.set_ram_y_start_end_position(0, 200).await?;
+        esp_println::println!("6");
         self.set_border_waveform().await?;
+        esp_println::println!("7");
         self.set_temperature_sensor(TemperatureSensor::Internal)
             .await?;
+        esp_println::println!("8");
         self.set_display_update_sequence(0xb1).await?;
+        esp_println::println!("9");
         self.master_activation().await?;
+        esp_println::println!("10");
         Ok(())
     }
 
@@ -120,9 +134,9 @@ where
         self.set_ram_y_address_position(0).await?;
         // self.write_bw_ram(&self.buffer[..])?;
         self.dc.set_low().unwrap();
-        self.spi.write(&[command::WRITE_RAM_BW]).await?;
+        self.spi.write(&[command::WRITE_RAM_BW])?;
         self.dc.set_high().unwrap();
-        self.spi.write(&self.buffer[..]).await?;
+        self.spi.write(&self.buffer[..])?;
         // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
         self.set_display_update_sequence(0xc7).await?;
         self.master_activation().await?;
@@ -243,12 +257,10 @@ where
     }
 
     async fn busy_wait(&mut self) {
-        // TODO would be nice to just use self.busy.wait_for_low().await but it doesn't
-        // work right now.
-        self.busy.wait_for_low().await.unwrap();
-        // while self.busy.is_high().unwrap() {
-        //     self.delay.delay_ms(10).await;
-        // }
+        // self.busy.wait_for_low().await.unwrap();
+        while self.busy.is_high().unwrap() {
+            self.delay.delay_ms(10).await;
+        }
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
@@ -259,13 +271,17 @@ where
 
     async fn write_command(&mut self, command: u8) -> Result<(), Error<E>> {
         self.dc.set_low().unwrap();
-        self.spi.write(&[command]).await?;
+        esp_println::println!("DC low");
+        self.spi.write(&[command])?;
+        esp_println::println!("command written");
         Ok(())
     }
 
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap();
-        self.spi.write(data).await?;
+        esp_println::println!("DC high");
+        self.spi.write(data)?;
+        esp_println::println!("data written");
         Ok(())
     }
 }

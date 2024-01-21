@@ -985,6 +985,7 @@ dependencies = [
  "embassy-executor",
  "embassy-time",
  "embedded-graphics",
+ "embedded-hal 1.0.0",
  "embedded-hal-async",
  "embedded-hal-bus",
  "esp-backtrace",

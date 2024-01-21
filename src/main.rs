@@ -15,8 +15,8 @@ use embedded_graphics::{
     primitives::{Ellipse, PrimitiveStyle},
     text::Text,
 };
+use embedded_hal::spi::SpiDevice;
 use embedded_hal_async::delay::DelayNs;
-use embedded_hal_async::spi::SpiDevice;
 use esp32_hal::{
     clock::ClockControl,
     dma::DmaPriority,
@@ -58,7 +58,13 @@ async fn main(_spawner: Spawner) {
 
     let mut vibration_motor = VibrationMotor::new(pins.vibration_motor);
 
-    let (mut tx_descriptors, mut rx_descriptors) = esp32_hal::dma_descriptors!(8);
+    // - FlashSafeDma doesn't work because the arrays need to be placed in ROM.
+    // - Interrupts are enabled automagically by embassy::init
+
+    // CHECK: is this correct maybe we need to directly pass these to write in
+    // actually no because it doesn't make sense, these are &mut borrowed later
+    // so we can't modify them
+    let (mut tx_descriptors, mut rx_descriptors) = esp32_hal::dma_descriptors!(32);
 
     let dma = Dma::new(system.dma);
 
@@ -72,18 +78,19 @@ async fn main(_spawner: Spawner) {
             DmaPriority::Priority0,
         ));
 
-    // let spi = FlashSafeDma::<_, 8>::new(spi);
+    let spi = embedded_hal_bus::spi::ExclusiveDevice::new(
+        spi,
+        pins.spi.cs,
+        esp32_hal::Delay::new(&clocks),
+    );
 
-    let mut spi =
-        embedded_hal_bus::spi::ExclusiveDevice::new(spi, pins.spi.cs, embassy_time::Delay);
-
-    // let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
-    //     spi,
-    //     pins.display.dc,
-    //     pins.display.reset,
-    //     pins.display.busy,
-    //     embassy_time::Delay,
-    // );
+    let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
+        spi,
+        pins.display.dc,
+        pins.display.reset,
+        pins.display.busy,
+        embassy_time::Delay,
+    );
 
     match watchy::get_wakeup_cause(&peripherals.LPWR) {
         watchy::WakeupCause::Reset => {
@@ -92,54 +99,35 @@ async fn main(_spawner: Spawner) {
         watchy::WakeupCause::ExternalRtcAlarm => {
             println!("RTC alarm");
 
-            vibration_motor
-                .vibrate_linear(2, Duration::from_millis(75))
-                .await;
+            // vibration_motor
+            //     .vibrate_linear(2, Duration::from_millis(75))
+            //     .await;
         }
         watchy::WakeupCause::ButtonPress(watchy::Button::BottomLeft) => {
-            // HW reset
-            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
-            pins.display.reset.set_low().unwrap();
-            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
-            pins.display.reset.set_high().unwrap();
-            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
+            Ellipse::new(Point::new(20, 20), Size::new(160, 160))
+                .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                .draw(&mut gdeh0154d67)
+                .unwrap();
 
-            println!("HW reset done");
-
-            // SW reset
-            pins.display.dc.set_low().unwrap();
-            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
-            println!("DC pin set low");
-            spi.write(&[0x12]).await.unwrap();
-            println!("written SW_RESET");
-            DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
-
-            println!("SW reset done");
-
-            // Ellipse::new(Point::new(20, 20), Size::new(160, 160))
-            //     .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            //     .draw(&mut gdeh0154d67)
-            //     .unwrap();
-
-            // let time = pcf8563.read_time().await.unwrap();
-            // let mut t = ArrayString::<5>::new();
-            // write!(&mut t, "{:02}:{:02}", time.hour(), time.minute()).unwrap();
-            // Text::with_baseline(
-            //     t.as_str(),
-            //     Point::new(4, 200 - 15 - 4),
-            //     MonoTextStyle::new(
-            //         &embedded_graphics::mono_font::ascii::FONT_9X15,
-            //         BinaryColor::On,
-            //     ),
-            //     embedded_graphics::text::Baseline::Top,
-            // )
-            // .draw(&mut gdeh0154d67)
-            // .unwrap();
+            let time = pcf8563.read_time().await.unwrap();
+            let mut t = ArrayString::<5>::new();
+            write!(&mut t, "{:02}:{:02}", time.hour(), time.minute()).unwrap();
+            Text::with_baseline(
+                t.as_str(),
+                Point::new(4, 200 - 15 - 4),
+                MonoTextStyle::new(
+                    &embedded_graphics::mono_font::ascii::FONT_9X15,
+                    BinaryColor::On,
+                ),
+                embedded_graphics::text::Baseline::Top,
+            )
+            .draw(&mut gdeh0154d67)
+            .unwrap();
 
             println!("lmao");
-            // gdeh0154d67.initialize().await.unwrap();
+            gdeh0154d67.initialize().await.unwrap();
             println!("tfw");
-            // gdeh0154d67.draw().await.unwrap();
+            gdeh0154d67.draw().await.unwrap();
         }
         watchy::WakeupCause::ButtonPress(button) => {
             println!("Button pressed: {:?}", button);
