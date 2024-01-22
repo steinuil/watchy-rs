@@ -289,7 +289,7 @@ impl<'a> Watchy<'a> {
         let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
 
         // Initialize embassy
-        embassy::init(&clocks, timer_group0.timer0);
+        embassy::init(&clocks, timer_group0);
 
         // Enable i2c for communication with PCF8563 and BMA423
         esp32_hal::interrupt::enable(
