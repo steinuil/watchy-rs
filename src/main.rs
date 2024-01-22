@@ -66,7 +66,9 @@ async fn main(_spawner: Spawner) {
     dc_pin.set_low().unwrap();
     println!("DC pin set low");
     tx_buffer[0] = 0x012;
-    spi.write(&tx_buffer[..1]).unwrap();
+    embedded_hal_async::spi::SpiBus::write(&mut spi, &tx_buffer[..1])
+        .await
+        .unwrap();
     println!("written SW_RESET");
     DelayNs::delay_ms(&mut embassy_time::Delay, 10).await;
     println!("SW reset done");
@@ -74,12 +76,16 @@ async fn main(_spawner: Spawner) {
     dc_pin.set_low().unwrap();
     println!("DC pin set low");
     tx_buffer[0] = 0x01;
-    spi.write(&tx_buffer[..1]).unwrap();
+    embedded_hal_async::spi::SpiBus::write(&mut spi, &tx_buffer[..1])
+        .await
+        .unwrap();
     dc_pin.set_high().unwrap();
     println!("DC pin set high");
     tx_buffer[0] = 0xc7;
     tx_buffer[1] = 0b0;
     tx_buffer[2] = 0x00;
-    spi.write(&tx_buffer[..3]).unwrap();
+    embedded_hal_async::spi::SpiBus::write(&mut spi, &tx_buffer[..3])
+        .await
+        .unwrap();
     println!("set driver control output")
 }
