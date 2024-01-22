@@ -64,25 +64,20 @@ async fn main(_spawner: Spawner) {
     // CHECK: is this correct maybe we need to directly pass these to write in
     // actually no because it doesn't make sense, these are &mut borrowed later
     // so we can't modify them
-    let (mut tx_descriptors, mut rx_descriptors) = esp32_hal::dma_descriptors!(32);
+    let (tx_buffer, mut tx_descriptors, _, mut rx_descriptors) = esp32_hal::dma_buffers!(6000, 0);
 
     let dma = Dma::new(system.dma);
 
     let spi = Spi::new(peripherals.SPI3, 20_u32.MHz(), SpiMode::Mode0, &clocks)
         .with_sck(pins.spi.sck)
         .with_mosi(pins.spi.mosi)
+        .with_cs(pins.spi.cs)
         .with_dma(dma.spi3channel.configure(
             false,
             &mut tx_descriptors,
             &mut rx_descriptors,
             DmaPriority::Priority0,
         ));
-
-    let spi = embedded_hal_bus::spi::ExclusiveDevice::new(
-        spi,
-        pins.spi.cs,
-        esp32_hal::Delay::new(&clocks),
-    );
 
     let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
         spi,

@@ -13,7 +13,7 @@ use embedded_graphics_core::{
 };
 use embedded_hal::{
     digital::{InputPin, OutputPin},
-    spi::{Operation, SpiDevice},
+    spi::SpiBus,
 };
 use embedded_hal_async::{delay::DelayNs, digital::Wait};
 
@@ -79,7 +79,7 @@ pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
 
 impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
 where
-    SPI: SpiDevice<Error = E>,
+    SPI: SpiBus<Error = E>,
     DC: OutputPin<Error = Infallible>,
     RES: OutputPin<Error = Infallible>,
     Busy: InputPin<Error = Infallible> + Wait,
@@ -286,7 +286,7 @@ where
     }
 }
 
-impl<SPI: SpiDevice, DC, RES, Busy, Delay> OriginDimensions
+impl<SPI: SpiBus, DC, RES, Busy, Delay> OriginDimensions
     for GDEH0154D67<SPI, DC, RES, Busy, Delay>
 {
     fn size(&self) -> embedded_graphics_core::prelude::Size {
@@ -297,7 +297,7 @@ impl<SPI: SpiDevice, DC, RES, Busy, Delay> OriginDimensions
     }
 }
 
-impl<SPI: SpiDevice<Error = E>, DC, RES, Busy, Delay, E> DrawTarget
+impl<SPI: SpiBus<Error = E>, DC, RES, Busy, Delay, E> DrawTarget
     for GDEH0154D67<SPI, DC, RES, Busy, Delay>
 {
     type Color = BinaryColor;
