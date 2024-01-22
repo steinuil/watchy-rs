@@ -44,7 +44,7 @@ async fn main(_spawner: Spawner) {
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
-    embassy::init(&clocks, timer_group0.timer0);
+    embassy::init(&clocks, timer_group0);
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
@@ -58,26 +58,10 @@ async fn main(_spawner: Spawner) {
 
     let mut vibration_motor = VibrationMotor::new(pins.vibration_motor);
 
-    // - FlashSafeDma doesn't work because the arrays need to be placed in ROM.
-    // - Interrupts are enabled automagically by embassy::init
-
-    // CHECK: is this correct maybe we need to directly pass these to write in
-    // actually no because it doesn't make sense, these are &mut borrowed later
-    // so we can't modify them
-    let (tx_buffer, mut tx_descriptors, _, mut rx_descriptors) = esp32_hal::dma_buffers!(6000, 0);
-
-    let dma = Dma::new(system.dma);
-
     let spi = Spi::new(peripherals.SPI3, 20_u32.MHz(), SpiMode::Mode0, &clocks)
         .with_sck(pins.spi.sck)
         .with_mosi(pins.spi.mosi)
-        .with_cs(pins.spi.cs)
-        .with_dma(dma.spi3channel.configure(
-            false,
-            &mut tx_descriptors,
-            &mut rx_descriptors,
-            DmaPriority::Priority0,
-        ));
+        .with_cs(pins.spi.cs);
 
     let mut gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
         spi,

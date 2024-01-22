@@ -16,6 +16,7 @@ use embedded_hal::{
     spi::SpiBus,
 };
 use embedded_hal_async::{delay::DelayNs, digital::Wait};
+use unwrap_infallible::UnwrapInfallible;
 
 #[derive(Debug)]
 pub enum Error<E> {
@@ -104,28 +105,17 @@ where
 
     pub async fn initialize(&mut self) -> Result<(), Error<E>> {
         self.delay.delay_ms(10).await;
-        esp_println::println!("0");
-        self.hardware_reset().await?;
-        esp_println::println!("1");
+        self.hardware_reset().await;
         self.software_reset().await?;
-        esp_println::println!("2");
         self.set_driver_output().await?;
-        esp_println::println!("3");
         self.set_data_entry_mode().await?;
-        esp_println::println!("4");
         self.set_ram_x_start_end_position(0, 200).await?;
-        esp_println::println!("5");
         self.set_ram_y_start_end_position(0, 200).await?;
-        esp_println::println!("6");
         self.set_border_waveform().await?;
-        esp_println::println!("7");
         self.set_temperature_sensor(TemperatureSensor::Internal)
             .await?;
-        esp_println::println!("8");
         self.set_display_update_sequence(0xb1).await?;
-        esp_println::println!("9");
         self.master_activation().await?;
-        esp_println::println!("10");
         Ok(())
     }
 
@@ -133,9 +123,9 @@ where
         self.set_ram_x_address_position(0).await?;
         self.set_ram_y_address_position(0).await?;
         // self.write_bw_ram(&self.buffer[..])?;
-        self.dc.set_low().unwrap();
+        self.dc.set_low().unwrap_infallible();
         self.spi.write(&[command::WRITE_RAM_BW])?;
-        self.dc.set_high().unwrap();
+        self.dc.set_high().unwrap_infallible();
         self.spi.write(&self.buffer[..])?;
         // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
         self.set_display_update_sequence(0xc7).await?;
@@ -144,12 +134,11 @@ where
         Ok(())
     }
 
-    async fn hardware_reset(&mut self) -> Result<(), Error<E>> {
-        self.reset.set_low().unwrap();
+    async fn hardware_reset(&mut self) {
+        self.reset.set_low().unwrap_infallible();
         self.delay.delay_ms(10).await;
-        self.reset.set_high().unwrap();
+        self.reset.set_high().unwrap_infallible();
         self.delay.delay_ms(10).await;
-        Ok(())
     }
 
     async fn software_reset(&mut self) -> Result<(), Error<E>> {
@@ -258,7 +247,7 @@ where
 
     async fn busy_wait(&mut self) {
         // self.busy.wait_for_low().await.unwrap();
-        while self.busy.is_high().unwrap() {
+        while self.busy.is_high().unwrap_infallible() {
             self.delay.delay_ms(10).await;
         }
     }
@@ -270,18 +259,14 @@ where
     }
 
     async fn write_command(&mut self, command: u8) -> Result<(), Error<E>> {
-        self.dc.set_low().unwrap();
-        esp_println::println!("DC low");
+        self.dc.set_low().unwrap_infallible();
         self.spi.write(&[command])?;
-        esp_println::println!("command written");
         Ok(())
     }
 
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.dc.set_high().unwrap();
-        esp_println::println!("DC high");
+        self.dc.set_high().unwrap_infallible();
         self.spi.write(data)?;
-        esp_println::println!("data written");
         Ok(())
     }
 }

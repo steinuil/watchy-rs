@@ -7,9 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# esp32-hal = { version = "0.17.0", features = ["async", "embassy", "embassy-executor-thread", "embassy-time-timg0"] }
-# TODO use crates.io version once it is released with updated dependencies
-esp32-hal = { git = "https://github.com/esp-rs/esp-hal.git", rev = "842eb7c92eb0552bcd013c73d3120f3902728681", features = ["async", "embassy", "embassy-executor-thread", "embassy-time-timg0"] }
+esp32-hal = { version = "0.18.0", features = ["async", "embassy", "embassy-executor-thread", "embassy-time-timg0"] }
 esp-backtrace = { version = "0.9.0", features = ["esp32", "panic-handler", "exception-handler", "print-uart"] }
 esp-println = { version = "0.7.1", features = ["esp32"] }
 static_cell = "2.0.0"
