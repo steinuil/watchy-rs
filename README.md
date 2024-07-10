@@ -39,3 +39,5 @@ https://watchy.sqfmi.com/docs/hardware
   - functionality missing
   - provide the raw time/date numbers from the registers and add a `time` feature that enables support for the `time` crate
 - Wi-fi and BLE: https://github.com/esp-rs/esp-wifi
+
+Have a look, y'all: https://github.com/sqfmi/Watchy/pull/242

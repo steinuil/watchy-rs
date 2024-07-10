@@ -1,11 +1,11 @@
-// Currently not very async because esp32-hal does not have an impl
-// for embedded_hal_async::SpiDevice, and right now when you try to pass
-// an SpiBus and use the async traits it hangs when trying to write on the bus.
+// Currently not very async because using embedded_hal_async::spi::SpiBus
+// just hangs on the write for some reason.
 
 #![no_std]
 
 use core::convert::Infallible;
 
+use bitflags::bitflags;
 use embedded_graphics_core::{
     pixelcolor::BinaryColor,
     prelude::{DrawTarget, OriginDimensions},
@@ -69,13 +69,71 @@ pub enum DeepSleepMode {
     ResetRAM = 0b11,
 }
 
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct DisplayUpdateSequence : u8 {
+        const ENABLE_CLOCK_SIGNAL = 1 << 7;
+        const ENABLE_ANALOG = 1 << 6;
+        const LOAD_TEMPERATURE_VALUE = 1 << 5;
+        const LOAD_LUT = 1 << 4;
+        /// Toggle between DISPLAY mode 1 and 2
+        const USE_DISPLAY_MODE_2 = 1 << 3;
+        const DISPLAY = 1 << 2;
+        const DISABLE_ANALOG = 1 << 1;
+        const DISABLE_CLOCK_SIGNAL = 1;
+
+        // 0xb1
+        const LOAD_WAVEFORM_LUT_FROM_OTP = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::LOAD_TEMPERATURE_VALUE.bits()
+            | Self::LOAD_LUT.bits()
+            | Self::DISABLE_CLOCK_SIGNAL.bits();
+
+        // 0xc7
+        const DRIVE_DISPLAY_PANEL = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::ENABLE_ANALOG.bits()
+            | Self::DISPLAY.bits()
+            | Self::DISABLE_ANALOG.bits()
+            | Self::DISABLE_CLOCK_SIGNAL.bits();
+
+        // 0xf8
+        const WATCHY_DISPLAY_POWER_ON = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::ENABLE_ANALOG.bits()
+            | Self::LOAD_TEMPERATURE_VALUE.bits()
+            | Self::LOAD_LUT.bits()
+            | Self::USE_DISPLAY_MODE_2.bits();
+
+        const WATCHY_DISPLAY_POWER_OFF = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::DISABLE_ANALOG.bits()
+            | Self::DISABLE_CLOCK_SIGNAL.bits();
+
+        // 0xfc
+        // Apparently you can skip temperature load to save 5ms
+        const WATCHY_UPDATE_PARTIAL = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::ENABLE_ANALOG.bits()
+            | Self::LOAD_TEMPERATURE_VALUE.bits()
+            | Self::LOAD_LUT.bits()
+            | Self::USE_DISPLAY_MODE_2.bits()
+            | Self::DISPLAY.bits();
+
+        // 0xf4
+        const WATCHY_UPDATE_FULL = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::ENABLE_ANALOG.bits()
+            | Self::LOAD_TEMPERATURE_VALUE.bits()
+            | Self::LOAD_LUT.bits()
+            | Self::DISPLAY.bits();
+    }
+}
+
+const WIDTH: u16 = 200;
+const HEIGHT: u16 = 200;
+
 pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
     spi: SPI,
     dc: DC,
     reset: RES,
     busy: Busy,
     delay: Delay,
-    buffer: [u8; 200 * 200 / 8],
+    buffer: [u8; WIDTH as usize * HEIGHT as usize / 8],
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
@@ -103,18 +161,60 @@ where
         }
     }
 
+    pub async fn draw2(&mut self, full_update: bool) -> Result<(), Error<E>> {
+        self.delay.delay_ms(10).await;
+        self.hardware_reset().await;
+        self.software_reset().await?;
+
+        self.set_driver_output().await?;
+        self.set_data_entry_mode(0b11).await?;
+        self.set_ram_x_start_end_position(0, 200).await?;
+        self.set_ram_y_start_end_position(0, 200).await?;
+        self.set_border_waveform(0b101).await?;
+        self.set_temperature_sensor(TemperatureSensor::Internal)
+            .await?;
+        self.set_display_update_sequence(if full_update {
+            DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP
+        } else {
+            DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP
+                | DisplayUpdateSequence::USE_DISPLAY_MODE_2
+        })
+        .await?;
+        self.master_activation().await?;
+
+        self.set_ram_x_address_position(0).await?;
+        self.set_ram_y_address_position(0).await?;
+
+        self.dc.set_low().unwrap_infallible();
+        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.dc.set_high().unwrap_infallible();
+        self.spi.write(&self.buffer[..])?;
+
+        self.set_display_update_sequence(if full_update {
+            DisplayUpdateSequence::DRIVE_DISPLAY_PANEL
+        } else {
+            DisplayUpdateSequence::DRIVE_DISPLAY_PANEL | DisplayUpdateSequence::USE_DISPLAY_MODE_2
+        })
+        .await?;
+        self.master_activation().await?;
+        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await?;
+
+        Ok(())
+    }
+
     pub async fn initialize(&mut self) -> Result<(), Error<E>> {
         self.delay.delay_ms(10).await;
         self.hardware_reset().await;
         self.software_reset().await?;
         self.set_driver_output().await?;
-        self.set_data_entry_mode().await?;
+        self.set_data_entry_mode(0b11).await?;
         self.set_ram_x_start_end_position(0, 200).await?;
         self.set_ram_y_start_end_position(0, 200).await?;
-        self.set_border_waveform().await?;
+        self.set_border_waveform(0b101).await?;
         self.set_temperature_sensor(TemperatureSensor::Internal)
             .await?;
-        self.set_display_update_sequence(0xb1).await?;
+        self.set_display_update_sequence(DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP)
+            .await?;
         self.master_activation().await?;
         Ok(())
     }
@@ -122,13 +222,16 @@ where
     pub async fn draw(&mut self) -> Result<(), Error<E>> {
         self.set_ram_x_address_position(0).await?;
         self.set_ram_y_address_position(0).await?;
+
         // self.write_bw_ram(&self.buffer[..])?;
         self.dc.set_low().unwrap_infallible();
         self.spi.write(&[command::WRITE_RAM_BW])?;
         self.dc.set_high().unwrap_infallible();
         self.spi.write(&self.buffer[..])?;
         // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
-        self.set_display_update_sequence(0xc7).await?;
+
+        self.set_display_update_sequence(DisplayUpdateSequence::DRIVE_DISPLAY_PANEL)
+            .await?;
         self.master_activation().await?;
         self.set_deep_sleep_mode(DeepSleepMode::ResetRAM).await?;
         Ok(())
@@ -148,14 +251,17 @@ where
         Ok(())
     }
 
+    // TODO make this configurable?
     async fn set_driver_output(&mut self) -> Result<(), Error<E>> {
         self.write_command_data(command::DRIVER_OUTPUT_CONTROL, &[0xc7, 0b0, 0x00])
             .await?;
         Ok(())
     }
 
-    async fn set_data_entry_mode(&mut self) -> Result<(), Error<E>> {
-        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[0b0_11])
+    // TODO document this parameter?
+    // 0b0_11 = 0x03 = x increase, y increase : normal mode in Display.cpp
+    async fn set_data_entry_mode(&mut self, data_entry_mode: u8) -> Result<(), Error<E>> {
+        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[data_entry_mode])
             .await?;
         Ok(())
     }
@@ -198,9 +304,11 @@ where
         Ok(())
     }
 
-    // TODO provide some parameters to control the border waveform
-    async fn set_border_waveform(&mut self) -> Result<(), Error<E>> {
-        self.write_command_data(command::BORDER_WAVEFORM_CONTROL, &[0b101])
+    // TODO make an enum for border waveform or something
+    // 0x02 = 0b010 = darkBorder in Display.cpp
+    // 0x05 = 0b101 = normal
+    async fn set_border_waveform(&mut self, border_waveform: u8) -> Result<(), Error<E>> {
+        self.write_command_data(command::BORDER_WAVEFORM_CONTROL, &[border_waveform])
             .await?;
         Ok(())
     }
@@ -222,8 +330,11 @@ where
     // 2 = display with DISPLAY Mode 1
     // 1 = disable analog
     // 0 = disable clock signal
-    async fn set_display_update_sequence(&mut self, sequence: u8) -> Result<(), Error<E>> {
-        self.write_command_data(command::DISPLAY_UPDATE_CONTROL_2, &[sequence])
+    async fn set_display_update_sequence(
+        &mut self,
+        sequence: DisplayUpdateSequence,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(command::DISPLAY_UPDATE_CONTROL_2, &[sequence.bits()])
             .await?;
         Ok(())
     }
@@ -246,10 +357,7 @@ where
     }
 
     async fn busy_wait(&mut self) {
-        // self.busy.wait_for_low().await.unwrap();
-        while self.busy.is_high().unwrap_infallible() {
-            self.delay.delay_ms(10).await;
-        }
+        self.busy.wait_for_low().await.unwrap_infallible();
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
@@ -267,6 +375,149 @@ where
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap_infallible();
         self.spi.write(data)?;
+        Ok(())
+    }
+}
+
+// This is how Watchy's Display.cpp does things
+
+impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
+where
+    SPI: SpiBus<Error = E>,
+    DC: OutputPin<Error = Infallible>,
+    RES: OutputPin<Error = Infallible>,
+    Busy: InputPin<Error = Infallible> + Wait,
+    Delay: DelayNs,
+{
+    pub async fn watchy_hibernate(&mut self) -> Result<(), Error<E>> {
+        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await
+    }
+
+    // _InitDisplay
+    async fn watchy_init_display(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
+        if is_hybernating {
+            self.hardware_reset().await;
+        }
+        self.software_reset().await?;
+
+        self.set_driver_output().await?;
+        self.set_border_waveform(0b101).await?;
+        self.set_display_update_sequence(DisplayUpdateSequence::ENABLE_CLOCK_SIGNAL)
+            .await?;
+
+        self.watchy_set_partial_ram_area(0, 0, WIDTH, HEIGHT)
+            .await?;
+
+        Ok(())
+    }
+
+    // _setPartialRamArea
+    async fn watchy_set_partial_ram_area(
+        &mut self,
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+    ) -> Result<(), Error<E>> {
+        self.set_data_entry_mode(0b11).await?;
+
+        self.set_ram_x_start_end_position(x, width).await?;
+        self.set_ram_y_start_end_position(y, height).await?;
+        self.set_ram_x_address_position(x).await?;
+        self.set_ram_y_address_position(y).await?;
+
+        Ok(())
+    }
+
+    pub async fn watchy_write_buffer(&mut self) -> Result<(), Error<E>> {
+        self.dc.set_low().unwrap_infallible();
+        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.dc.set_high().unwrap_infallible();
+        self.spi.write(&self.buffer[..])?;
+
+        Ok(())
+    }
+
+    // _PowerOn
+    async fn watchy_power_on(&mut self) -> Result<(), Error<E>> {
+        self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_DISPLAY_POWER_ON)
+            .await?;
+        self.master_activation().await?;
+        Ok(())
+    }
+
+    // _Init_Full and _Init_Part
+    async fn watchy_init(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
+        self.watchy_init_display(is_hybernating).await?;
+        self.watchy_power_on().await?;
+        Ok(())
+    }
+
+    // _PowerOff and powerOff
+    pub async fn watchy_power_off(&mut self) -> Result<(), Error<E>> {
+        self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_DISPLAY_POWER_OFF)
+            .await?;
+        self.master_activation().await?;
+        Ok(())
+    }
+
+    // _Update_Part
+    async fn watchy_update_partial(&mut self) -> Result<(), Error<E>> {
+        self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_UPDATE_PARTIAL)
+            .await?;
+        self.master_activation().await?;
+        Ok(())
+    }
+
+    // _Update_Full
+    async fn watchy_update_full(&mut self) -> Result<(), Error<E>> {
+        self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_UPDATE_FULL)
+            .await?;
+        self.master_activation().await?;
+        Ok(())
+    }
+
+    // refresh(true)
+    pub async fn watchy_refresh(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
+        self.watchy_refresh_partial(0, 0, WIDTH, HEIGHT, is_hybernating)
+            .await
+    }
+
+    pub async fn watchy_refresh_full(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
+        self.watchy_init(is_hybernating).await?;
+        self.watchy_set_partial_ram_area(0, 0, WIDTH, HEIGHT)
+            .await?;
+        self.watchy_update_full().await?;
+        Ok(())
+    }
+
+    // refresh(x, y, w, h)
+    pub async fn watchy_refresh_partial(
+        &mut self,
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+        is_hybernating: bool,
+    ) -> Result<(), Error<E>> {
+        // here are a bunch of checks to ensure that the parameters are not out of range
+        // of the screen
+        let width = width + (x % 8);
+        let width = if width % 8 > 0 {
+            width + 8 - (width % 8)
+        } else {
+            width
+        };
+        let x = x - (x % 8);
+
+        // if !_using_partial_mode {
+        self.watchy_init(is_hybernating).await?;
+        // }
+
+        self.watchy_set_partial_ram_area(x, y, width, height)
+            .await?;
+        self.watchy_update_partial().await?;
+
         Ok(())
     }
 }
@@ -293,8 +544,8 @@ impl<SPI: SpiBus<Error = E>, DC, RES, Busy, Delay, E> DrawTarget
         I: IntoIterator<Item = embedded_graphics_core::Pixel<Self::Color>>,
     {
         for Pixel(pos, color) in pixels.into_iter() {
-            if let Ok((x @ 0..=199, y @ 0..=199)) = pos.try_into() {
-                let index = (x + y * 200) as usize;
+            if let (x @ 0..=199, y @ 0..=199) = pos.into() {
+                let index = x as usize + y as usize * WIDTH as usize;
                 self.buffer[index / 8] &= !(1 << (7 - (index % 8)));
                 if color.is_off() {
                     self.buffer[index / 8] |= 1 << (7 - (index % 8));
