@@ -16,7 +16,8 @@ use embedded_graphics::{
     primitives::{Ellipse, PrimitiveStyle, Rectangle},
     text::Text,
 };
-use esp32_hal::{
+use esp_backtrace as _;
+use esp_hal::{
     clock::ClockControl,
     embassy,
     peripherals::Peripherals,
@@ -25,7 +26,6 @@ use esp32_hal::{
     timer::TimerGroup,
     Rtc, IO,
 };
-use esp_backtrace as _;
 use esp_println::println;
 use watchy::VibrationMotor;
 

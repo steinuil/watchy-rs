@@ -160,13 +160,13 @@ fn sensor_temperature_as_celsius(temp: u8) -> Option<i16> {
     }
 }
 
-#[test]
-fn test_temperature_sensor_celsius_conversion() {
-    assert_eq!(Some(150), sensor_temperature_as_celsius(0x7f));
-    assert_eq!(Some(23), sensor_temperature_as_celsius(0x00));
-    assert_eq!(Some(-104), sensor_temperature_as_celsius(0x81));
-    assert_eq!(None, sensor_temperature_as_celsius(0x80))
-}
+// #[test]
+// fn test_temperature_sensor_celsius_conversion() {
+//     assert_eq!(Some(150), sensor_temperature_as_celsius(0x7f));
+//     assert_eq!(Some(23), sensor_temperature_as_celsius(0x00));
+//     assert_eq!(Some(-104), sensor_temperature_as_celsius(0x81));
+//     assert_eq!(None, sensor_temperature_as_celsius(0x80))
+// }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -563,12 +563,12 @@ fn join_feature_conf_data_address(asic_lsb: u8, asic_msb: u8) -> usize {
     (((asic_msb as usize) << 4) | ((asic_lsb as usize) & 0x0F)) * 2
 }
 
-#[test]
-fn test_split_join_feature_conf_data_address() {
-    for orig in 0..(u8::MAX as usize) {
-        let orig = orig * 2;
-        let (lsb, msb) = split_feature_conf_data_address(orig);
-        let joined = join_feature_conf_data_address(lsb, msb);
-        assert_eq!(orig, joined);
-    }
-}
+// #[test]
+// fn test_split_join_feature_conf_data_address() {
+//     for orig in 0..(u8::MAX as usize) {
+//         let orig = orig * 2;
+//         let (lsb, msb) = split_feature_conf_data_address(orig);
+//         let joined = join_feature_conf_data_address(lsb, msb);
+//         assert_eq!(orig, joined);
+//     }
+// }

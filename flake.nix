@@ -23,18 +23,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        toolchain =
-          with fenix.packages.${system};
-          combine [
-            (complete.withComponents [
-              "cargo"
-              "clippy"
-              "rust-src"
-              "rustc"
-              "rustfmt"
-            ])
-            rust-analyzer
-          ];
+        toolchain = with fenix.packages.${system}; rust-analyzer;
 
         naerskBuildPackage =
           (naersk.lib.${system}.override {
@@ -65,7 +54,8 @@
             packages.esp-xtensa-gcc
             # packages.esp-riscv32-gcc
             packages.esp-rust
-            rustup
+            rust-analyzer
+            # rustup
           ];
         };
       }
