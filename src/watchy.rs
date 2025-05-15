@@ -2,7 +2,7 @@ use core::num::NonZeroU8;
 
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
-use esp32_hal::{
+use esp_hal::{
     clock::{ClockControl, Clocks},
     embassy,
     gpio::{GpioPin, Input, Output, OutputPin, PullUp, PushPull, Unknown},

@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 bitflags = "2.3.1"
-embedded-hal-async = "1.0.0-rc.2"
+embedded-hal-async = "1.0.0"
 time = { version = "0.3", default-features = false }
