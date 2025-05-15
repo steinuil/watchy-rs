@@ -1,26 +1,14 @@
-use core::num::NonZeroU8;
-
 use embassy_time::{Duration, Timer};
-use embedded_hal_async::spi::SpiDevice;
 use esp_hal::{
-    clock::{ClockControl, Clocks},
-    embassy,
-    gpio::{GpioPin, Input, Output, OutputPin, PullUp, PushPull, Unknown},
-    i2c::I2C,
-    interrupt,
-    pdma::{Dma, Spi3DmaChannel},
-    peripherals::{Interrupt, Peripherals, I2C0, LPWR, SPI3},
-    prelude::_fugit_RateExtU32,
+    gpio::{GpioPin, Output},
+    i2c::master::{Config, I2c},
+    peripherals::{I2C0, LPWR},
     reset::SleepSource,
-    rtc_cntl::sleep::{Ext0WakeupSource, Ext1WakeupSource, WakeupLevel},
-    spi::{
-        master::prelude::*,
-        master::{dma::SpiDma, Spi},
-        FullDuplexMode, SpiMode,
+    rtc_cntl::{
+        sleep::{Ext0WakeupSource, Ext1WakeupSource, TimerWakeupSource, WakeupLevel},
+        Rtc,
     },
-    system::SystemExt,
-    timer::TimerGroup,
-    Delay, Rtc, IO,
+    time::RateExtU32,
 };
 
 const RTCIO_GPIO4_CHANNEL: u32 = 1 << 10;
@@ -68,7 +56,7 @@ pub enum WakeupCause {
 }
 
 pub fn get_wakeup_cause(rtc_cntl: &LPWR) -> WakeupCause {
-    let cause = esp32_hal::reset::get_wakeup_cause();
+    let cause = esp_hal::reset::wakeup_cause();
 
     match cause {
         SleepSource::Ext0 => WakeupCause::ExternalRtcAlarm,
@@ -82,46 +70,46 @@ pub fn get_wakeup_cause(rtc_cntl: &LPWR) -> WakeupCause {
 }
 
 pub mod pins {
-    use esp32_hal::gpio::{GpioPin, Input, Output, PullUp, PushPull, Unknown};
+    use esp_hal::{gpio::GpioPin, peripherals::Peripherals};
 
     // I2C
     pub const SDA: u8 = 21;
-    pub type Sda = GpioPin<Unknown, SDA>;
+    pub type Sda = GpioPin<SDA>;
     pub const SCL: u8 = 22;
-    pub type Scl = GpioPin<Unknown, SCL>;
+    pub type Scl = GpioPin<SCL>;
 
     // SPI
     pub const SCK: u8 = 18;
-    pub type Sck = GpioPin<Unknown, SCK>;
+    pub type Sck = GpioPin<SCK>;
     pub const MOSI: u8 = 23;
-    pub type Mosi = GpioPin<Unknown, MOSI>;
+    pub type Mosi = GpioPin<MOSI>;
     pub const CS: u8 = 5;
-    pub type Cs = GpioPin<Output<PushPull>, CS>;
+    pub type Cs = GpioPin<CS>;
 
     // Display
     pub const DC: u8 = 10;
-    pub type Dc = GpioPin<Output<PushPull>, DC>;
+    pub type Dc = GpioPin<DC>;
     pub const RESET: u8 = 9;
-    pub type Reset = GpioPin<Output<PushPull>, RESET>;
+    pub type Reset = GpioPin<RESET>;
     pub const BUSY: u8 = 19;
-    pub type Busy = GpioPin<Input<PullUp>, BUSY>;
+    pub type Busy = GpioPin<BUSY>;
 
     // External RTC interrupt
     pub const EXTERNAL_RTC: u8 = 27;
-    pub type ExternalRtc = GpioPin<Unknown, EXTERNAL_RTC>;
+    pub type ExternalRtc = GpioPin<EXTERNAL_RTC>;
 
     // Button interrupts
     pub const BUTTON_BOTTOM_LEFT: u8 = 26;
-    pub type ButtonBottomLeft = GpioPin<Unknown, BUTTON_BOTTOM_LEFT>;
+    pub type ButtonBottomLeft = GpioPin<BUTTON_BOTTOM_LEFT>;
     pub const BUTTON_BOTTOM_RIGHT: u8 = 4;
-    pub type ButtonBottomRight = GpioPin<Unknown, BUTTON_BOTTOM_RIGHT>;
+    pub type ButtonBottomRight = GpioPin<BUTTON_BOTTOM_RIGHT>;
     pub const BUTTON_TOP_LEFT: u8 = 25;
-    pub type ButtonTopLeft = GpioPin<Unknown, BUTTON_TOP_LEFT>;
+    pub type ButtonTopLeft = GpioPin<BUTTON_TOP_LEFT>;
     pub const BUTTON_TOP_RIGHT: u8 = 35;
-    pub type ButtonTopRight = GpioPin<Unknown, BUTTON_TOP_RIGHT>;
+    pub type ButtonTopRight = GpioPin<BUTTON_TOP_RIGHT>;
 
     pub const VIBRATION_MOTOR: u8 = 13;
-    pub type VibrationMotor = GpioPin<Output<PushPull>, VIBRATION_MOTOR>;
+    pub type VibrationMotor = GpioPin<VIBRATION_MOTOR>;
 
     pub struct ButtonPins {
         pub bottom_left: ButtonBottomLeft,
@@ -157,52 +145,52 @@ pub mod pins {
     }
 
     impl Pins {
-        pub fn new(pins: esp32_hal::gpio::Pins) -> Self {
+        pub fn new(peripherals: Peripherals) -> Self {
             Pins {
-                vibration_motor: pins.gpio13.into_push_pull_output(),
+                vibration_motor: peripherals.GPIO13,
                 buttons: ButtonPins {
-                    bottom_left: pins.gpio26,
-                    bottom_right: pins.gpio4,
-                    top_left: pins.gpio25,
-                    top_right: pins.gpio35,
+                    bottom_left: peripherals.GPIO26,
+                    bottom_right: peripherals.GPIO4,
+                    top_left: peripherals.GPIO25,
+                    top_right: peripherals.GPIO35,
                 },
-                external_rtc: pins.gpio27,
+                external_rtc: peripherals.GPIO27,
                 display: DisplayPins {
-                    dc: pins.gpio10.into_push_pull_output(),
-                    reset: pins.gpio9.into_push_pull_output(),
-                    busy: pins.gpio19.into_pull_up_input(),
+                    dc: peripherals.GPIO10,
+                    reset: peripherals.GPIO9,
+                    busy: peripherals.GPIO19,
                 },
                 spi: SpiPins {
-                    sck: pins.gpio18,
-                    mosi: pins.gpio23,
-                    cs: pins.gpio5.into_push_pull_output(),
+                    sck: peripherals.GPIO18,
+                    mosi: peripherals.GPIO23,
+                    cs: peripherals.GPIO5,
                 },
                 i2c: I2cPins {
-                    sda: pins.gpio21,
-                    scl: pins.gpio22,
+                    sda: peripherals.GPIO21,
+                    scl: peripherals.GPIO22,
                 },
             }
         }
     }
 }
 
-pub use pins::Pins;
-
-pub struct VibrationMotor {
-    pin: pins::VibrationMotor,
+pub struct VibrationMotor<'a> {
+    pin: Output<'a>,
 }
 
-impl VibrationMotor {
+impl VibrationMotor<'_> {
     pub fn new(pin: pins::VibrationMotor) -> Self {
-        VibrationMotor { pin }
+        VibrationMotor {
+            pin: Output::new(pin, esp_hal::gpio::Level::Low),
+        }
     }
 
     pub fn enable(&mut self) {
-        self.pin.set_output_high(true);
+        self.pin.set_high();
     }
 
     pub fn disable(&mut self) {
-        self.pin.set_output_high(false);
+        self.pin.set_low();
     }
 
     pub async fn vibrate_linear(&mut self, times: u8, interval: Duration) {
@@ -222,179 +210,181 @@ impl VibrationMotor {
 
 pub fn sleep_deep(
     mut rtc: Rtc,
-    mut delay: Delay,
+    duration: core::time::Duration,
     mut interrupt_pin: pins::ExternalRtc,
     mut button_pins: pins::ButtonPins,
 ) -> ! {
-    rtc.sleep_deep(
-        &[
-            &Ext0WakeupSource::new(&mut interrupt_pin, WakeupLevel::Low),
-            &Ext1WakeupSource::new(
-                &mut [
-                    &mut button_pins.bottom_left,
-                    &mut button_pins.bottom_right,
-                    &mut button_pins.top_left,
-                    &mut button_pins.top_right,
-                ],
-                WakeupLevel::High,
-            ),
-        ],
-        &mut delay,
-    );
+    rtc.sleep_deep(&[
+        &Ext0WakeupSource::new(&mut interrupt_pin, WakeupLevel::Low),
+        &Ext1WakeupSource::new(
+            &mut [
+                &mut button_pins.bottom_left,
+                &mut button_pins.bottom_right,
+                &mut button_pins.top_left,
+                &mut button_pins.top_right,
+            ],
+            WakeupLevel::High,
+        ),
+        &TimerWakeupSource::new(duration),
+    ]);
 }
 
 // TODO: use an embassy_sync::mutex::Mutex to share the i2c bus between the devices
-pub fn init_i2c<'d>(i2c0: I2C0, pins: pins::I2cPins, clocks: &Clocks) -> I2C<'d, I2C0> {
-    I2C::new(i2c0, pins.sda, pins.scl, 400_u32.kHz(), clocks)
+pub fn init_i2c<'d>(i2c0: I2C0, pins: pins::I2cPins) -> I2c<'d, esp_hal::Async> {
+    I2c::new(i2c0, Config::default().with_frequency(400_u32.kHz()))
+        .unwrap()
+        .with_sda(pins.sda)
+        .with_scl(pins.scl)
+        .into_async()
 }
 
-type Display<'a> = gdeh0154d67_async::GDEH0154D67<
-    SpiDma<'a, SPI3, Spi3DmaChannel, FullDuplexMode>,
-    GpioPin<Output<PushPull>, 10>,
-    GpioPin<Output<PushPull>, 9>,
-    GpioPin<Input<PullUp>, 19>,
-    embassy_time::Delay,
->;
+// type Display<'a> = gdeh0154d67_async::GDEH0154D67<
+//     SpiDma<'a, SPI3, Spi3DmaChannel, FullDuplexMode>,
+//     GpioPin<Output<PushPull>, 10>,
+//     GpioPin<Output<PushPull>, 9>,
+//     GpioPin<Input<PullUp>, 19>,
+//     embassy_time::Delay,
+// >;
 
-// struct DisplayDriver<'a, 'd> {
-// pub spi_bus_controller: SpiBusController<'a, SPI3, FullDuplexMode>,
-// pub display: Display<'a, 'd>,
-// }
+// // struct DisplayDriver<'a, 'd> {
+// // pub spi_bus_controller: SpiBusController<'a, SPI3, FullDuplexMode>,
+// // pub display: Display<'a, 'd>,
+// // }
 
 struct ExtPins {
-    pub rtc_interrupt: GpioPin<Unknown, 27>,
-    pub button_bottom_left: GpioPin<Unknown, 26>,
-    pub button_top_left: GpioPin<Unknown, 25>,
-    pub button_top_right: GpioPin<Unknown, 35>,
-    pub button_bottom_right: GpioPin<Unknown, 4>,
+    pub rtc_interrupt: GpioPin<27>,
+    pub button_bottom_left: GpioPin<26>,
+    pub button_top_left: GpioPin<25>,
+    pub button_top_right: GpioPin<35>,
+    pub button_bottom_right: GpioPin<4>,
 }
 
-pub struct Watchy<'a> {
-    clocks: Clocks<'a>,
-    rtc: Rtc<'a>,
-    i2c: I2C<'a, I2C0>,
-    // spi_bus_controller: SpiBusController<'a, SPI3, FullDuplexMode>,
-    // display: Display<'a>,
-    // display_driver: DisplayDriver<'a>,
-    ext_pins: ExtPins,
-    vibration_motor: VibrationMotor,
-}
+// pub struct Watchy<'a> {
+//     clocks: Clocks<'a>,
+//     rtc: Rtc<'a>,
+//     i2c: I2C<'a, I2C0>,
+//     // spi_bus_controller: SpiBusController<'a, SPI3, FullDuplexMode>,
+//     // display: Display<'a>,
+//     // display_driver: DisplayDriver<'a>,
+//     ext_pins: ExtPins,
+//     vibration_motor: VibrationMotor<'a>,
+// }
 
-impl<'a> Watchy<'a> {
-    pub async fn new() -> Result<Self, interrupt::Error> {
-        let peripherals = Peripherals::take();
-        let system = peripherals.SYSTEM.split();
-        let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+// impl<'a> Watchy<'a> {
+//     pub async fn new() -> Result<Self, interrupt::Error> {
+//         let peripherals = Peripherals::take();
+//         let system = peripherals.SYSTEM.split();
+//         let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
 
-        let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+//         let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
 
-        // Initialize embassy
-        embassy::init(&clocks, timer_group0);
+//         // Initialize embassy
+//         embassy::init(&clocks, timer_group0);
 
-        // Enable i2c for communication with PCF8563 and BMA423
-        esp32_hal::interrupt::enable(
-            Interrupt::I2C_EXT0,
-            esp32_hal::interrupt::Priority::Priority1,
-        )?;
+//         // Enable i2c for communication with PCF8563 and BMA423
+//         esp32_hal::interrupt::enable(
+//             Interrupt::I2C_EXT0,
+//             esp32_hal::interrupt::Priority::Priority1,
+//         )?;
 
-        // Enable SPI for communication with GDEH0154D67
-        esp32_hal::interrupt::enable(Interrupt::SPI3, esp32_hal::interrupt::Priority::Priority1)?;
+//         // Enable SPI for communication with GDEH0154D67
+//         esp32_hal::interrupt::enable(Interrupt::SPI3, esp32_hal::interrupt::Priority::Priority1)?;
 
-        let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+//         let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
-        // Pins for i2c
-        let sda_pin = io.pins.gpio21;
-        let scl_pin = io.pins.gpio22;
+//         // Pins for i2c
+//         let sda_pin = io.pins.gpio21;
+//         let scl_pin = io.pins.gpio22;
 
-        // Pins for SPI
-        let sck_pin = io.pins.gpio18;
-        let mosi_pin = io.pins.gpio23;
-        let cs_pin = io.pins.gpio5;
+//         // Pins for SPI
+//         let sck_pin = io.pins.gpio18;
+//         let mosi_pin = io.pins.gpio23;
+//         let cs_pin = io.pins.gpio5;
 
-        // Pins for driving the display
-        let dc_pin = io.pins.gpio10;
-        let reset_pin = io.pins.gpio9;
-        let busy_pin = io.pins.gpio19;
+//         // Pins for driving the display
+//         let dc_pin = io.pins.gpio10;
+//         let reset_pin = io.pins.gpio9;
+//         let busy_pin = io.pins.gpio19;
 
-        let vibration_motor_pin = io.pins.gpio13;
+//         let vibration_motor_pin = io.pins.gpio13;
 
-        let rtc_interrupt_pin = io.pins.gpio27;
+//         let rtc_interrupt_pin = io.pins.gpio27;
 
-        let button_bottom_left_pin = io.pins.gpio26;
-        let button_top_left_pin = io.pins.gpio25;
-        let button_top_right_pin = io.pins.gpio35;
-        let button_bottom_right_pin = io.pins.gpio4;
+//         let button_bottom_left_pin = io.pins.gpio26;
+//         let button_top_left_pin = io.pins.gpio25;
+//         let button_top_right_pin = io.pins.gpio35;
+//         let button_bottom_right_pin = io.pins.gpio4;
 
-        // TODO: maybe use an embassy_sync::mutex::Mutex to share the i2c bus
-        // between the devices
-        let i2c = I2C::new(peripherals.I2C0, sda_pin, scl_pin, 400_u32.kHz(), &clocks);
+//         // TODO: maybe use an embassy_sync::mutex::Mutex to share the i2c bus
+//         // between the devices
+//         let i2c = I2C::new(peripherals.I2C0, sda_pin, scl_pin, 400_u32.kHz(), &clocks);
 
-        let spi = Spi::new(peripherals.SPI3, 20_u32.MHz(), SpiMode::Mode0, &clocks)
-            .with_sck(sck_pin)
-            .with_mosi(mosi_pin);
+//         let spi = Spi::new(peripherals.SPI3, 20_u32.MHz(), SpiMode::Mode0, &clocks)
+//             .with_sck(sck_pin)
+//             .with_mosi(mosi_pin);
 
-        let _spi = embedded_hal_bus::spi::ExclusiveDevice::new(
-            spi,
-            cs_pin.into_push_pull_output(),
-            embassy_time::Delay,
-        );
+//         let _spi = embedded_hal_bus::spi::ExclusiveDevice::new(
+//             spi,
+//             cs_pin.into_push_pull_output(),
+//             embassy_time::Delay,
+//         );
 
-        // embedded_hal_async::spi::SpiDevice::write(&mut spi, &[0]).await;
+//         // embedded_hal_async::spi::SpiDevice::write(&mut spi, &[0]).await;
 
-        // let display = gdeh0154d67_async::GDEH0154D67::new(
-        //     spi,
-        //     dc_pin.into_push_pull_output(),
-        //     reset_pin.into_push_pull_output(),
-        //     busy_pin.into_pull_up_input(),
-        //     embassy_time::Delay,
-        // );
+//         // let display = gdeh0154d67_async::GDEH0154D67::new(
+//         //     spi,
+//         //     dc_pin.into_push_pull_output(),
+//         //     reset_pin.into_push_pull_output(),
+//         //     busy_pin.into_pull_up_input(),
+//         //     embassy_time::Delay,
+//         // );
 
-        let vibration_motor = VibrationMotor::new(vibration_motor_pin.into_push_pull_output());
-        // let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
+//         let vibration_motor = VibrationMotor::new(vibration_motor_pin.into_push_pull_output());
+//         // let mut pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, &mut i2c);
 
-        let _status = peripherals.LPWR.ext_wakeup1_status();
+//         let _status = peripherals.LPWR.ext_wakeup1_status();
 
-        let rtc = Rtc::new(peripherals.LPWR);
+//         let rtc = Rtc::new(peripherals.LPWR);
 
-        Ok(Watchy {
-            clocks,
-            rtc,
-            i2c,
-            // spi_bus_controller,
-            // display,
-            ext_pins: ExtPins {
-                rtc_interrupt: rtc_interrupt_pin,
-                button_bottom_left: button_bottom_left_pin,
-                button_top_left: button_top_left_pin,
-                button_top_right: button_top_right_pin,
-                button_bottom_right: button_bottom_right_pin,
-            },
-            // display,
-            vibration_motor,
-        })
-    }
+//         Ok(Watchy {
+//             clocks,
+//             rtc,
+//             i2c,
+//             // spi_bus_controller,
+//             // display,
+//             ext_pins: ExtPins {
+//                 rtc_interrupt: rtc_interrupt_pin,
+//                 button_bottom_left: button_bottom_left_pin,
+//                 button_top_left: button_top_left_pin,
+//                 button_top_right: button_top_right_pin,
+//                 button_bottom_right: button_bottom_right_pin,
+//             },
+//             // display,
+//             vibration_motor,
+//         })
+//     }
 
-    pub fn vibration_motor(&mut self) -> &mut VibrationMotor {
-        &mut self.vibration_motor
-    }
+//     pub fn vibration_motor(&mut self) -> &mut VibrationMotor {
+//         &mut self.vibration_motor
+//     }
 
-    pub fn deep_sleep(mut self) -> ! {
-        let mut delay = Delay::new(&self.clocks);
+//     pub fn deep_sleep(mut self) -> ! {
+//         let mut delay = Delay::new(&self.clocks);
 
-        self.rtc.sleep_deep(
-            &[
-                &Ext0WakeupSource::new(&mut self.ext_pins.rtc_interrupt, WakeupLevel::Low),
-                &Ext1WakeupSource::new(
-                    &mut [
-                        &mut self.ext_pins.button_bottom_left,
-                        &mut self.ext_pins.button_top_left,
-                        &mut self.ext_pins.button_top_right,
-                        &mut self.ext_pins.button_bottom_right,
-                    ],
-                    WakeupLevel::High,
-                ),
-            ],
-            &mut delay,
-        )
-    }
-}
+//         self.rtc.sleep_deep(
+//             &[
+//                 &Ext0WakeupSource::new(&mut self.ext_pins.rtc_interrupt, WakeupLevel::Low),
+//                 &Ext1WakeupSource::new(
+//                     &mut [
+//                         &mut self.ext_pins.button_bottom_left,
+//                         &mut self.ext_pins.button_top_left,
+//                         &mut self.ext_pins.button_top_right,
+//                         &mut self.ext_pins.button_bottom_right,
+//                     ],
+//                     WakeupLevel::High,
+//                 ),
+//             ],
+//             &mut delay,
+//         )
+//     }
+// }

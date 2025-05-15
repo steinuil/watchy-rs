@@ -238,6 +238,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-time-queue-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc55c748d16908a65b166d09ce976575fb8852cf60ccd06174092b41064d8f83"
+dependencies = [
+ "embassy-executor",
+ "heapless",
+]
+
+[[package]]
 name = "embedded-can"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -459,6 +469,28 @@ dependencies = [
  "void",
  "xtensa-lx",
  "xtensa-lx-rt",
+]
+
+[[package]]
+name = "esp-hal-embassy"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cea15ef146c7689fede0c3a7d765e07b1eb22ef462f1203a137dacc615b031a"
+dependencies = [
+ "critical-section",
+ "document-features",
+ "embassy-executor",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-time-driver",
+ "embassy-time-queue-utils",
+ "esp-build",
+ "esp-config",
+ "esp-hal",
+ "esp-hal-procmacros",
+ "esp-metadata",
+ "portable-atomic",
+ "static_cell",
 ]
 
 [[package]]
@@ -1074,6 +1106,7 @@ dependencies = [
  "embedded-hal-bus",
  "esp-backtrace",
  "esp-hal",
+ "esp-hal-embassy",
  "esp-println",
  "gdeh0154d67-async",
  "pcf8563-async",
