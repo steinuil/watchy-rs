@@ -3,11 +3,6 @@
 use core::convert::Infallible;
 
 use bitflags::bitflags;
-use embedded_graphics_core::{
-    pixelcolor::BinaryColor,
-    prelude::{DrawTarget, OriginDimensions},
-    Pixel,
-};
 use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiBus};
 use unwrap_infallible::UnwrapInfallible;
@@ -161,7 +156,6 @@ pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
-    buffer: [u8; WIDTH as usize * HEIGHT as usize / 8],
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
@@ -185,85 +179,8 @@ where
             reset: reset_pin,
             busy: busy_pin,
             delay,
-            buffer: [0xFF; 200 * 200 / 8],
         }
     }
-
-    pub async fn draw2(&mut self, full_update: bool) -> Result<(), Error<E>> {
-        self.delay.delay_ms(10).await;
-        self.hardware_reset().await;
-        self.software_reset().await?;
-
-        self.set_driver_output().await?;
-        self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
-        self.set_ram_x_start_end_position(0, 200).await?;
-        self.set_ram_y_start_end_position(0, 200).await?;
-        self.set_border_waveform(0b101).await?;
-        self.select_temperature_sensor(TemperatureSensor::Internal)
-            .await?;
-        self.set_display_update_sequence(if full_update {
-            DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP
-        } else {
-            DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP
-                | DisplayUpdateSequence::USE_DISPLAY_MODE_2
-        })
-        .await?;
-        self.master_activation().await?;
-
-        self.set_ram_x_address_position(0).await?;
-        self.set_ram_y_address_position(0).await?;
-
-        self.write_command(command::WRITE_RAM_BW).await?;
-        self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..]).await?;
-
-        self.set_display_update_sequence(if full_update {
-            DisplayUpdateSequence::DRIVE_DISPLAY_PANEL
-        } else {
-            DisplayUpdateSequence::DRIVE_DISPLAY_PANEL | DisplayUpdateSequence::USE_DISPLAY_MODE_2
-        })
-        .await?;
-        self.master_activation().await?;
-        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await?;
-
-        Ok(())
-    }
-
-    // pub async fn initialize(&mut self) -> Result<(), Error<E>> {
-    //     self.delay.delay_ms(10).await;
-    //     self.hardware_reset().await;
-    //     self.software_reset().await?;
-
-    //     self.set_driver_output().await?;
-    //     self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
-    //     self.set_ram_x_start_end_position(0, 200).await?;
-    //     self.set_ram_y_start_end_position(0, 200).await?;
-    //     self.set_border_waveform(0b101).await?;
-    //     self.set_temperature_sensor(TemperatureSensor::Internal)
-    //         .await?;
-    //     self.set_display_update_sequence(DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP)
-    //         .await?;
-    //     self.master_activation().await?;
-    //     Ok(())
-    // }
-
-    // pub async fn draw(&mut self) -> Result<(), Error<E>> {
-    //     self.set_ram_x_address_position(0).await?;
-    //     self.set_ram_y_address_position(0).await?;
-
-    //     // self.write_bw_ram(&self.buffer[..])?;
-    //     self.dc.set_low().unwrap_infallible();
-    //     self.spi.write(&[command::WRITE_RAM_BW]).await?;
-    //     self.dc.set_high().unwrap_infallible();
-    //     self.spi.write(&self.buffer[..]).await?;
-    //     // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
-
-    //     self.set_display_update_sequence(DisplayUpdateSequence::DRIVE_DISPLAY_PANEL)
-    //         .await?;
-    //     self.master_activation().await?;
-    //     self.set_deep_sleep_mode(DeepSleepMode::ResetRAM).await?;
-    //     Ok(())
-    // }
 
     // Operation flow
 
@@ -421,7 +338,7 @@ where
         Ok(())
     }
 
-    async fn select_temperature_sensor(
+    pub async fn select_temperature_sensor(
         &mut self,
         sensor: TemperatureSensor,
     ) -> Result<(), Error<E>> {
@@ -632,41 +549,6 @@ where
 
         self.set_partial_ram_area(x, y, width, height).await?;
         self.watchy_update_partial().await?;
-
-        Ok(())
-    }
-}
-
-impl<SPI: SpiBus, DC, RES, Busy, Delay> OriginDimensions
-    for GDEH0154D67<SPI, DC, RES, Busy, Delay>
-{
-    fn size(&self) -> embedded_graphics_core::prelude::Size {
-        embedded_graphics_core::prelude::Size {
-            width: 200,
-            height: 200,
-        }
-    }
-}
-
-impl<SPI: SpiBus<Error = E>, DC, RES, Busy, Delay, E> DrawTarget
-    for GDEH0154D67<SPI, DC, RES, Busy, Delay>
-{
-    type Color = BinaryColor;
-    type Error = Error<E>;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = embedded_graphics_core::Pixel<Self::Color>>,
-    {
-        for Pixel(pos, color) in pixels.into_iter() {
-            if let (x @ 0..=199, y @ 0..=199) = pos.into() {
-                let index = x as usize + y as usize * WIDTH as usize;
-                self.buffer[index / 8] &= !(1 << (7 - (index % 8)));
-                if color.is_off() {
-                    self.buffer[index / 8] |= 1 << (7 - (index % 8));
-                }
-            }
-        }
 
         Ok(())
     }

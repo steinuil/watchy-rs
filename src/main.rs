@@ -19,7 +19,9 @@ use esp_hal_embassy::main;
 use esp_println as _;
 use watchy::{WakeupCause, Watchy};
 
+mod battery;
 mod buttons;
+mod draw_buffer;
 mod font;
 mod vibration_motor;
 pub mod watchy;
@@ -44,7 +46,7 @@ async fn main(_spawner: Spawner) {
 
             Circle::new(Point::new(10, 10), 120)
                 .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                .draw(&mut watchy.display)
+                .draw(&mut watchy.draw_buffer)
                 .unwrap();
 
             let mut t = ArrayString::<5>::new();
@@ -59,10 +61,10 @@ async fn main(_spawner: Spawner) {
                 ),
                 embedded_graphics::text::Baseline::Top,
             )
-            .draw(&mut watchy.display)
+            .draw(&mut watchy.draw_buffer)
             .unwrap();
 
-            watchy.display.draw2(true).await.unwrap();
+            watchy.draw_buffer_to_display().await.unwrap();
         }
 
         WakeupCause::ExternalRtcAlarm => {

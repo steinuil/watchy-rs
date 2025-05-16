@@ -5,10 +5,9 @@ use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{
     self,
-    analog::adc,
     gpio::{GpioPin, Input, Output},
     i2c::{self, master::I2c},
-    peripherals::{ADC1, LPWR},
+    peripherals::LPWR,
     reset::SleepSource,
     rtc_cntl::{
         sleep::{Ext0WakeupSource, Ext1WakeupSource},
@@ -21,12 +20,16 @@ use esp_hal::{
 };
 use static_cell::StaticCell;
 
-use crate::{buttons::WakeupButtons, vibration_motor::VibrationMotor};
+use crate::{
+    battery::Battery, buttons::WakeupButtons, draw_buffer::DrawBuffer,
+    vibration_motor::VibrationMotor,
+};
 
 #[derive(Debug, Format)]
 pub enum Error {
     I2cConfig(i2c::master::ConfigError),
     SpiConfig(spi::master::ConfigError),
+    Spi(spi::Error),
     Interrupt(esp_hal::interrupt::Error),
 }
 
@@ -45,6 +48,14 @@ impl From<spi::master::ConfigError> for Error {
 impl From<esp_hal::interrupt::Error> for Error {
     fn from(value: esp_hal::interrupt::Error) -> Self {
         Error::Interrupt(value)
+    }
+}
+
+impl From<gdeh0154d67_async::Error<spi::Error>> for Error {
+    fn from(value: gdeh0154d67_async::Error<spi::Error>) -> Self {
+        match value {
+            gdeh0154d67_async::Error::Spi(spi) => Error::Spi(spi),
+        }
     }
 }
 
@@ -82,36 +93,13 @@ pub enum WakeupCause {
     Unknown(SleepSource),
 }
 
-pub struct Battery<'a> {
-    adc: adc::Adc<'a, ADC1>,
-    pin: adc::AdcPin<GpioPin<34>, ADC1>,
-}
-
-impl Battery<'_> {
-    pub fn new(adc: ADC1, pin: GpioPin<34>) -> Self {
-        let mut config = adc::AdcConfig::new();
-        let pin = config.enable_pin(pin, adc::Attenuation::_11dB);
-        let adc = adc::Adc::new(adc, config);
-
-        Battery { adc, pin }
-    }
-
-    pub fn voltage(&mut self) -> Option<f32> {
-        // For some reason the first read usually returns WouldBlock
-        let _ = self.adc.read_oneshot(&mut self.pin);
-        let raw = self.adc.read_oneshot(&mut self.pin).ok()?;
-        let voltage = (raw as f32 / 4095.0) * 3.3;
-        Some(voltage)
-    }
-}
-
 pub struct Watchy<'a> {
     pub display: Display<'a>,
     pub external_rtc: pcf8563_async::PCF8563<I2cBusDevice<'a>>,
     pub sensor: bma423_async::BMA423<I2cBusDevice<'a>, embassy_time::Delay>,
     pub vibration_motor: VibrationMotor<'a>,
-    // battery_pin: GpioPin<34>,
     pub battery: Battery<'a>,
+    pub draw_buffer: DrawBuffer,
     lpwr: LPWR,
     wakeup_pins: WakeupPins,
 }
@@ -203,12 +191,15 @@ impl Watchy<'_> {
 
         let battery = Battery::new(peripherals.ADC1, peripherals.GPIO34);
 
+        let draw_buffer = DrawBuffer::empty();
+
         Ok(Watchy {
             display: gdeh0154d67,
             external_rtc: pcf8563,
             sensor: bma423,
             vibration_motor,
             battery,
+            draw_buffer,
             lpwr,
             wakeup_pins,
         })
@@ -244,5 +235,33 @@ impl Watchy<'_> {
                 esp_hal::rtc_cntl::sleep::WakeupLevel::High,
             ),
         ])
+    }
+
+    pub async fn draw_buffer_to_display(&mut self) -> Result<(), Error> {
+        self.display.init().await?;
+        self.display
+            .set_border_color(gdeh0154d67_async::BorderColor::White)
+            .await?;
+
+        self.display.set_partial_ram_area(0, 0, 200, 200).await?;
+        self.display
+            .write_image_data(self.draw_buffer.buffer())
+            .await?;
+        self.display
+            .select_temperature_sensor(gdeh0154d67_async::TemperatureSensor::Internal)
+            .await?;
+        self.display
+            .update_display(
+                gdeh0154d67_async::DisplayUpdateSequence::WATCHY_UPDATE_FULL
+                    | gdeh0154d67_async::DisplayUpdateSequence::USE_DISPLAY_MODE_2
+                    | gdeh0154d67_async::DisplayUpdateSequence::DISABLE_ANALOG
+                    | gdeh0154d67_async::DisplayUpdateSequence::DISABLE_CLOCK_SIGNAL,
+                None,
+            )
+            .await?;
+
+        self.display.hibernate().await?;
+
+        Ok(())
     }
 }
