@@ -18,11 +18,15 @@ esp-backtrace = { version = "0.15.1", features = [
   "esp32",
   "panic-handler",
   "exception-handler",
-  "println",
+  "defmt",
   # "print-uart",
 ] }
-esp-hal-embassy = { version = "0.6.0", features = ["esp32"] }
-esp-println = { version = "0.13.1", features = ["esp32"] }
+esp-hal-embassy = { version = "0.6.0", features = ["esp32", "defmt"] }
+esp-println = { version = "0.13.1", features = [
+  "esp32",
+  "log",
+  "defmt-espflash",
+] }
 static_cell = "2.0.0"
 embassy-executor = { version = "0.7.0", features = [
   "nightly",
@@ -33,11 +37,13 @@ embassy-time = { version = "0.4.0" }
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 embassy-embedded-hal = "0.3.0"
-embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+# embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+embedded-graphics = "0.8.1"
+# arrayvec = { version = "0.7.6", default-features = false }
 embassy-sync = { version = "0.6.2" }
+bitflags = "2.3.1"
+defmt = "1.0.1"
+
 bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
 gdeh0154d67-async = { path = "./gdeh0154d67-async" }
-embedded-graphics = "0.8.1"
-arrayvec = { version = "0.7.6", default-features = false }
-bitflags = "2.3.1"

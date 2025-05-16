@@ -96,6 +96,8 @@ impl<'a> Watchy<'a> {
         let timer_group0 = TimerGroup::new(peripherals.TIMG0);
         esp_hal_embassy::init(timer_group0.timer0);
 
+        defmt::debug!("initialized embassy");
+
         // TODO is this necessary?
         // Enable i2c for communication with PCF8563 and BMA423
         esp_hal::interrupt::enable(
@@ -108,6 +110,8 @@ impl<'a> Watchy<'a> {
             esp_hal::interrupt::Priority::Priority1,
         )?;
 
+        defmt::debug!("enabled interrupts");
+
         // Initialize I2C bus
         let i2c_config = i2c::master::Config::default().with_frequency(400_u32.kHz());
         let i2c = I2c::new(peripherals.I2C0, i2c_config)?
@@ -117,6 +121,8 @@ impl<'a> Watchy<'a> {
         static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, Async>>> = StaticCell::new();
         let i2c_bus = I2C_BUS.init(Mutex::new(i2c));
 
+        defmt::debug!("initialized I2C bus");
+
         // Initialize SPI
         let spi_config = spi::master::Config::default().with_frequency(20_u32.MHz());
         let spi = Spi::new(peripherals.SPI3, spi_config)?
@@ -124,6 +130,8 @@ impl<'a> Watchy<'a> {
             .with_mosi(peripherals.GPIO23)
             .with_cs(peripherals.GPIO5)
             .into_async();
+
+        defmt::debug!("initialized SPI");
 
         // Initialize display
         // TODO check if the pin initial values are correct
@@ -134,10 +142,12 @@ impl<'a> Watchy<'a> {
             Input::new(peripherals.GPIO19, esp_hal::gpio::Pull::Up),
             embassy_time::Delay,
         );
+        defmt::debug!("initialized display");
 
         // Initialize RTC
         let i2c_device = I2cDevice::new(i2c_bus);
         let pcf8563 = pcf8563_async::PCF8563::new(pcf8563_async::SLAVE_ADDRESS, i2c_device);
+        defmt::debug!("initialized external rtc");
 
         // Initialize sensor
         let i2c_device = I2cDevice::new(i2c_bus);
@@ -146,6 +156,7 @@ impl<'a> Watchy<'a> {
             i2c_device,
             embassy_time::Delay,
         );
+        defmt::debug!("initialized sensor");
 
         // Initialize vibration motor
         let vibration_motor = VibrationMotor::new(peripherals.GPIO13);
