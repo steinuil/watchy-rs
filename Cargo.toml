@@ -32,9 +32,12 @@ embassy-executor = { version = "0.7.0", features = [
 embassy-time = { version = "0.4.0" }
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
+embassy-embedded-hal = "0.3.0"
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
+embassy-sync = { version = "0.6.2" }
 bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
 gdeh0154d67-async = { path = "./gdeh0154d67-async" }
 embedded-graphics = "0.8.1"
 arrayvec = { version = "0.7.6", default-features = false }
+bitflags = "2.3.1"

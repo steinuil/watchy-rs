@@ -1097,8 +1097,11 @@ name = "watchy-rs"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bitflags",
  "bma423-async",
+ "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-sync",
  "embassy-time",
  "embedded-graphics",
  "embedded-hal 1.0.0",

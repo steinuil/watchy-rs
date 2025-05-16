@@ -5,6 +5,8 @@ mod register;
 use bitflags::bitflags;
 use embedded_hal_async::{delay::DelayNs, i2c::I2c};
 
+pub const PRIMARY_ADDRESS: u8 = 0x18;
+
 const CHIP_ID: u8 = 0x13;
 
 // Probably contains firmware and configuration for the accelerometer.

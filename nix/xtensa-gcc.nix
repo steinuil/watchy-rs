@@ -1,6 +1,7 @@
 {
   stdenv,
   fetchzip,
+  autoPatchelfHook,
 }:
 let
   targetArch =
@@ -20,16 +21,15 @@ stdenv.mkDerivation (finalAttrs: {
     hash = "sha256-pX2KCnUoGZtgqFmZEuNRJxDMQgqYYPRpswL3f3T0nWE=";
   };
 
+  nativeBuildInputs = [ autoPatchelfHook ];
+  buildInputs = [
+    stdenv.cc.cc.lib
+  ];
+
   outputs = [ "out" ];
 
   installPhase = ''
     mkdir -p $out
     cp -r ./* $out/
-  '';
-
-  preFixup = ''
-    patchelf \
-      --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
-      $out/bin/*
   '';
 })

@@ -1,6 +1,3 @@
-// Currently not very async because using embedded_hal_async::spi::SpiBus
-// just hangs on the write for some reason.
-
 #![no_std]
 
 use core::convert::Infallible;
@@ -11,11 +8,8 @@ use embedded_graphics_core::{
     prelude::{DrawTarget, OriginDimensions},
     Pixel,
 };
-use embedded_hal::{
-    digital::{InputPin, OutputPin},
-    spi::SpiBus,
-};
-use embedded_hal_async::{delay::DelayNs, digital::Wait};
+use embedded_hal::digital::{InputPin, OutputPin};
+use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiBus};
 use unwrap_infallible::UnwrapInfallible;
 
 #[derive(Debug)]
@@ -186,9 +180,9 @@ where
         self.set_ram_y_address_position(0).await?;
 
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.spi.write(&[command::WRITE_RAM_BW]).await?;
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..])?;
+        self.spi.write(&self.buffer[..]).await?;
 
         self.set_display_update_sequence(if full_update {
             DisplayUpdateSequence::DRIVE_DISPLAY_PANEL
@@ -225,9 +219,9 @@ where
 
         // self.write_bw_ram(&self.buffer[..])?;
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.spi.write(&[command::WRITE_RAM_BW]).await?;
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..])?;
+        self.spi.write(&self.buffer[..]).await?;
         // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
 
         self.set_display_update_sequence(DisplayUpdateSequence::DRIVE_DISPLAY_PANEL)
@@ -368,13 +362,13 @@ where
 
     async fn write_command(&mut self, command: u8) -> Result<(), Error<E>> {
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command])?;
+        self.spi.write(&[command]).await?;
         Ok(())
     }
 
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(data)?;
+        self.spi.write(data).await?;
         Ok(())
     }
 }
@@ -431,9 +425,9 @@ where
 
     pub async fn watchy_write_buffer(&mut self) -> Result<(), Error<E>> {
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW])?;
+        self.spi.write(&[command::WRITE_RAM_BW]).await?;
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..])?;
+        self.spi.write(&self.buffer[..]).await?;
 
         Ok(())
     }
