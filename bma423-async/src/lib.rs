@@ -315,6 +315,9 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         let y = ((buf[3] as u16) << 8) | buf[2] as u16;
         let z = ((buf[5] as u16) << 8) | buf[4] as u16;
 
+        // In the C driver it checks if the device has a 12- or 14-bit resolution,
+        // but we only support the BMA423 which has a resolution of 12 bits
+        // so we don't need to do that.
         Ok((x / 0x10, y / 0x10, z / 0x10))
     }
 
@@ -336,6 +339,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         Ok(())
     }
 
+    /// Check that the chip ID is valid.
     async fn check_chip_id(&mut self) -> Result<(), Error<E>> {
         let chip_id = self.read_u8(register::CHIP_ID).await?;
 
@@ -379,10 +383,13 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
             match self.read_u8(register::INTERNAL_STATUS).await? & 0xF {
                 // ASIC not initialized
                 0x00 => {}
+
                 // ASIC initialized
                 0x01 => break,
+
                 // Initialization error
                 0x02 => return Err(Error::ASICInitialization),
+
                 // Other error
                 _ => return Err(Error::ASICInitialization),
             }
@@ -422,13 +429,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         F: FnOnce(&mut [u8]),
     {
         // Must disable advanced power save before using the FEATURES_IN register
-        let power_mode = self.power_mode().await?;
-        if power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
-            self.set_power_mode(power_mode.difference(PowerMode::ADVANCED_POWER_SAVE))
-                .await?;
-
-            self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await
-        }
+        let prev_power_mode = self.disable_advanced_power_save().await?;
 
         let mut buf = [0; FEATURE_SIZE];
         self.burst_read_features(feature_offset::START, &mut buf)
@@ -440,10 +441,8 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
             .await?;
 
         // Restore advanced power save if it was set before
-        if power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
-            self.set_power_mode(power_mode).await?;
-
-            self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await
+        if prev_power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
+            self.restore_advanced_power_save(prev_power_mode).await?;
         }
 
         Ok(())
@@ -451,22 +450,37 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
 
     async fn read_features(&mut self, buf: &mut [u8]) -> Result<(), Error<E>> {
         // Must disable advanced power save before using the FEATURES_IN register
+        let prev_power_mode = self.disable_advanced_power_save().await?;
+
+        self.burst_read_features(feature_offset::START, buf).await?;
+
+        // Restore advanced power save if it was set before
+        if prev_power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
+            self.restore_advanced_power_save(prev_power_mode).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn disable_advanced_power_save(&mut self) -> Result<PowerMode, Error<E>> {
         let power_mode = self.power_mode().await?;
         if power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
             self.set_power_mode(power_mode.difference(PowerMode::ADVANCED_POWER_SAVE))
                 .await?;
 
-            self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await
+            self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await;
         }
 
-        self.burst_read_features(feature_offset::START, buf).await?;
+        Ok(power_mode)
+    }
 
-        // Restore advanced power save if it was set before
-        if power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
-            self.set_power_mode(power_mode).await?;
+    async fn restore_advanced_power_save(
+        &mut self,
+        prev_power_mode: PowerMode,
+    ) -> Result<(), Error<E>> {
+        self.set_power_mode(prev_power_mode).await?;
 
-            self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await
-        }
+        self.delay.delay_us(SENSOR_TIME_SYNCHRONIZATION_US).await;
 
         Ok(())
     }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Chip identification code
 pub const CHIP_ID: u8 = 0x00;
 

@@ -95,6 +95,7 @@ pub struct AlarmConfig {
     pub weekday: Option<time::Weekday>,
 }
 
+#[allow(dead_code)]
 mod register {
     pub const CONTROL_STATUS_1: u8 = 0x00;
     pub const CONTROL_STATUS_2: u8 = 0x01;
@@ -105,6 +106,7 @@ mod register {
     pub const CLOCK_OUTPUT: u8 = 0x0D;
 }
 
+#[allow(dead_code)]
 mod mask {
     pub const ALARM_FLAG: u8 = 0x08;
     pub const ALARM_INTERRUPT_ENABLED: u8 = 0x02;
@@ -246,9 +248,9 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         .await
     }
 
-    async fn clear_control_status(&mut self) -> Result<(), Error<E>> {
-        self.write(&[register::CONTROL_STATUS_1, 0x00, 0x00]).await
-    }
+    // async fn clear_control_status(&mut self) -> Result<(), Error<E>> {
+    //     self.write(&[register::CONTROL_STATUS_1, 0x00, 0x00]).await
+    // }
 
     async fn read_registers(&mut self, register: u8, buf: &mut [u8]) -> Result<(), Error<E>> {
         self.i2c.write_read(self.address, &[register], buf).await?;
