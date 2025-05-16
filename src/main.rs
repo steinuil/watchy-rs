@@ -62,7 +62,7 @@ async fn main(_spawner: Spawner) {
             .draw(&mut watchy.display)
             .unwrap();
 
-            watchy.display.draw2(false).await.unwrap();
+            watchy.display.draw2(true).await.unwrap();
         }
 
         WakeupCause::ExternalRtcAlarm => {

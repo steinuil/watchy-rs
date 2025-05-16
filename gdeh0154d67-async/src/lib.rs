@@ -59,11 +59,45 @@ pub enum TemperatureSensor {
 #[derive(Debug, Clone, Copy)]
 pub enum DeepSleepMode {
     Normal = 0b00,
+
+    /// AKA Deep Sleep Mode 1
     RetainRAM = 0b01,
+
+    /// AKA Deep Sleep Mode 2
     ResetRAM = 0b11,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum BorderColor {
+    White = 0b101,
+    Black = 0b110,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Control how the bits in RAM are drawn to the display
+pub enum RamOptions {
+    /// Set 0 bytes to white and 1 bytes to black
+    Normal = 0,
+
+    /// Set 1 bytes to black and ignore 0 bytes
+    Bypass0 = 0b100,
+
+    /// Set 0 bytes to black and 1 bytes to white
+    Invert = 0b1000,
+}
+
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct DataEntryMode : u8 {
+        const X_INCREMENT = 1;
+        const Y_INCREMENT = 1 << 1;
+        const ADDR_MODE_Y = 1 << 2;
+
+        const DEFAULT = Self::X_INCREMENT.bits() | Self::Y_INCREMENT.bits();
+    }
+
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct DisplayUpdateSequence : u8 {
         const ENABLE_CLOCK_SIGNAL = 1 << 7;
@@ -161,11 +195,11 @@ where
         self.software_reset().await?;
 
         self.set_driver_output().await?;
-        self.set_data_entry_mode(0b11).await?;
+        self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
         self.set_ram_x_start_end_position(0, 200).await?;
         self.set_ram_y_start_end_position(0, 200).await?;
         self.set_border_waveform(0b101).await?;
-        self.set_temperature_sensor(TemperatureSensor::Internal)
+        self.select_temperature_sensor(TemperatureSensor::Internal)
             .await?;
         self.set_display_update_sequence(if full_update {
             DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP
@@ -195,40 +229,110 @@ where
         Ok(())
     }
 
-    pub async fn initialize(&mut self) -> Result<(), Error<E>> {
+    // pub async fn initialize(&mut self) -> Result<(), Error<E>> {
+    //     self.delay.delay_ms(10).await;
+    //     self.hardware_reset().await;
+    //     self.software_reset().await?;
+
+    //     self.set_driver_output().await?;
+    //     self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
+    //     self.set_ram_x_start_end_position(0, 200).await?;
+    //     self.set_ram_y_start_end_position(0, 200).await?;
+    //     self.set_border_waveform(0b101).await?;
+    //     self.set_temperature_sensor(TemperatureSensor::Internal)
+    //         .await?;
+    //     self.set_display_update_sequence(DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP)
+    //         .await?;
+    //     self.master_activation().await?;
+    //     Ok(())
+    // }
+
+    // pub async fn draw(&mut self) -> Result<(), Error<E>> {
+    //     self.set_ram_x_address_position(0).await?;
+    //     self.set_ram_y_address_position(0).await?;
+
+    //     // self.write_bw_ram(&self.buffer[..])?;
+    //     self.dc.set_low().unwrap_infallible();
+    //     self.spi.write(&[command::WRITE_RAM_BW]).await?;
+    //     self.dc.set_high().unwrap_infallible();
+    //     self.spi.write(&self.buffer[..]).await?;
+    //     // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
+
+    //     self.set_display_update_sequence(DisplayUpdateSequence::DRIVE_DISPLAY_PANEL)
+    //         .await?;
+    //     self.master_activation().await?;
+    //     self.set_deep_sleep_mode(DeepSleepMode::ResetRAM).await?;
+    //     Ok(())
+    // }
+
+    // Operation flow
+
+    pub async fn init(&mut self) -> Result<(), Error<E>> {
+        // We have to wait 10ms after power is supplied.
         self.delay.delay_ms(10).await;
+
         self.hardware_reset().await;
         self.software_reset().await?;
+
         self.set_driver_output().await?;
-        self.set_data_entry_mode(0b11).await?;
-        self.set_ram_x_start_end_position(0, 200).await?;
-        self.set_ram_y_start_end_position(0, 200).await?;
-        self.set_border_waveform(0b101).await?;
-        self.set_temperature_sensor(TemperatureSensor::Internal)
-            .await?;
-        self.set_display_update_sequence(DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP)
-            .await?;
-        self.master_activation().await?;
+
         Ok(())
     }
 
-    pub async fn draw(&mut self) -> Result<(), Error<E>> {
-        self.set_ram_x_address_position(0).await?;
-        self.set_ram_y_address_position(0).await?;
+    pub async fn set_partial_ram_area(
+        &mut self,
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+    ) -> Result<(), Error<E>> {
+        self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
 
-        // self.write_bw_ram(&self.buffer[..])?;
-        self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW]).await?;
-        self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..]).await?;
-        // self.write_command_data(command::WRITE_RAM_BW, self.buffer.as_slice())?;
+        self.set_ram_x_start_end_position(x, width).await?;
+        self.set_ram_y_start_end_position(y, height).await?;
+        self.set_ram_x_address_position(x).await?;
+        self.set_ram_y_address_position(y).await?;
 
-        self.set_display_update_sequence(DisplayUpdateSequence::DRIVE_DISPLAY_PANEL)
-            .await?;
-        self.master_activation().await?;
-        self.set_deep_sleep_mode(DeepSleepMode::ResetRAM).await?;
         Ok(())
     }
+
+    pub async fn set_border_color(&mut self, color: BorderColor) -> Result<(), Error<E>> {
+        self.set_border_waveform(color as u8).await
+    }
+
+    pub async fn load_waveform_lut_from_otp(&mut self) -> Result<(), Error<E>> {
+        self.select_temperature_sensor(TemperatureSensor::Internal)
+            .await?;
+        self.update_display(DisplayUpdateSequence::LOAD_WAVEFORM_LUT_FROM_OTP, None)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn write_image_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_bw_ram(data).await
+    }
+
+    /// Update the display with the contents of the RAM.
+    pub async fn update_display(
+        &mut self,
+        sequence: DisplayUpdateSequence,
+        options: Option<RamOptions>,
+    ) -> Result<(), Error<E>> {
+        if let Some(options) = options {
+            self.set_display_update_ram_options(options).await?;
+        }
+        self.set_display_update_sequence(sequence).await?;
+        self.master_activation().await?;
+
+        Ok(())
+    }
+
+    pub async fn hibernate(&mut self) -> Result<(), Error<E>> {
+        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await
+    }
+
+    // Commands
 
     async fn hardware_reset(&mut self) {
         self.reset.set_low().unwrap_infallible();
@@ -237,6 +341,9 @@ where
         self.delay.delay_ms(10).await;
     }
 
+    /// Resets the commands and parameters to their S/W Reset default values
+    /// except Deep Sleep Mode.
+    /// RAM is unaffected by this command.
     async fn software_reset(&mut self) -> Result<(), Error<E>> {
         self.write_command(command::SW_RESET).await?;
         // According to the SSD1681 spec
@@ -244,21 +351,26 @@ where
         Ok(())
     }
 
-    // TODO make this configurable?
     async fn set_driver_output(&mut self) -> Result<(), Error<E>> {
-        self.write_command_data(command::DRIVER_OUTPUT_CONTROL, &[0xc7, 0b0, 0x00])
+        // The first 9 bits set the number of vertical rows that the display has,
+        // the first 3 bits of the last byte set the gate scanning sequence and direction.
+        // Probably not a good idea to mess with this.
+        self.write_command_data(command::DRIVER_OUTPUT_CONTROL, &[0xc7, 0x00, 0x00])
             .await?;
         Ok(())
     }
 
-    // TODO document this parameter?
-    // 0b0_11 = 0x03 = x increase, y increase : normal mode in Display.cpp
-    async fn set_data_entry_mode(&mut self, data_entry_mode: u8) -> Result<(), Error<E>> {
-        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[data_entry_mode])
+    /// Set how the X and Y coordinates are incremented while drawing to the display.
+    async fn set_data_entry_mode(
+        &mut self,
+        data_entry_mode: DataEntryMode,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[data_entry_mode.bits()])
             .await?;
         Ok(())
     }
 
+    /// Set the horizontal window in display RAM where image data will be written.
     async fn set_ram_x_start_end_position(&mut self, x: u16, width: u16) -> Result<(), Error<E>> {
         self.write_command_data(
             command::SET_RAM_X_START_END_POSITION,
@@ -268,6 +380,7 @@ where
         Ok(())
     }
 
+    /// Set the vertical window in display RAM where image data will be written.
     async fn set_ram_y_start_end_position(&mut self, y: u16, height: u16) -> Result<(), Error<E>> {
         self.write_command_data(
             command::SET_RAM_Y_START_END_POSITION,
@@ -282,12 +395,14 @@ where
         Ok(())
     }
 
+    /// Set the absolute starting X position in RAM where data will be written.
     async fn set_ram_x_address_position(&mut self, x: u16) -> Result<(), Error<E>> {
         self.write_command_data(command::SET_RAM_X_ADDRESS_POSITION, &[(x / 8) as u8])
             .await?;
         Ok(())
     }
 
+    /// Set the absolute starting Y position in RAM where data will be written.
     async fn set_ram_y_address_position(&mut self, y: u16) -> Result<(), Error<E>> {
         self.write_command_data(
             command::SET_RAM_Y_ADDRESS_POSITION,
@@ -306,10 +421,20 @@ where
         Ok(())
     }
 
-    async fn set_temperature_sensor(&mut self, sensor: TemperatureSensor) -> Result<(), Error<E>> {
+    async fn select_temperature_sensor(
+        &mut self,
+        sensor: TemperatureSensor,
+    ) -> Result<(), Error<E>> {
         self.write_command_data(command::TEMPERATURE_SENSOR_CONTROL, &[sensor as u8])
-            .await?;
-        Ok(())
+            .await
+    }
+
+    async fn set_display_update_ram_options(
+        &mut self,
+        options: RamOptions,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(command::DISPLAY_UPDATE_CONTROL_1, &[options as u8])
+            .await
     }
 
     // TODO use bitmask or something for this
@@ -339,15 +464,15 @@ where
     }
 
     async fn write_bw_ram(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.write_command_data(command::WRITE_RAM_BW, data).await?;
-        Ok(())
+        self.write_command_data(command::WRITE_RAM_BW, data).await
     }
 
     async fn set_deep_sleep_mode(&mut self, mode: DeepSleepMode) -> Result<(), Error<E>> {
         self.write_command_data(command::DEEP_SLEEP_MODE, &[mode as u8])
-            .await?;
-        Ok(())
+            .await
     }
+
+    // Helpers
 
     async fn busy_wait(&mut self) {
         self.busy.wait_for_low().await.unwrap_infallible();
@@ -382,9 +507,9 @@ where
     Busy: InputPin<Error = Infallible> + Wait,
     Delay: DelayNs,
 {
-    pub async fn watchy_hibernate(&mut self) -> Result<(), Error<E>> {
-        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await
-    }
+    // pub async fn watchy_hibernate(&mut self) -> Result<(), Error<E>> {
+    //     self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await
+    // }
 
     // _InitDisplay
     async fn watchy_init_display(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
@@ -398,38 +523,37 @@ where
         self.set_display_update_sequence(DisplayUpdateSequence::ENABLE_CLOCK_SIGNAL)
             .await?;
 
-        self.watchy_set_partial_ram_area(0, 0, WIDTH, HEIGHT)
-            .await?;
+        self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
 
         Ok(())
     }
 
     // _setPartialRamArea
-    async fn watchy_set_partial_ram_area(
-        &mut self,
-        x: u16,
-        y: u16,
-        width: u16,
-        height: u16,
-    ) -> Result<(), Error<E>> {
-        self.set_data_entry_mode(0b11).await?;
+    // async fn watchy_set_partial_ram_area(
+    //     &mut self,
+    //     x: u16,
+    //     y: u16,
+    //     width: u16,
+    //     height: u16,
+    // ) -> Result<(), Error<E>> {
+    //     self.set_data_entry_mode(DataEntryMode::DEFAULT).await?;
 
-        self.set_ram_x_start_end_position(x, width).await?;
-        self.set_ram_y_start_end_position(y, height).await?;
-        self.set_ram_x_address_position(x).await?;
-        self.set_ram_y_address_position(y).await?;
+    //     self.set_ram_x_start_end_position(x, width).await?;
+    //     self.set_ram_y_start_end_position(y, height).await?;
+    //     self.set_ram_x_address_position(x).await?;
+    //     self.set_ram_y_address_position(y).await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    pub async fn watchy_write_buffer(&mut self) -> Result<(), Error<E>> {
-        self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW]).await?;
-        self.dc.set_high().unwrap_infallible();
-        self.spi.write(&self.buffer[..]).await?;
+    // pub async fn watchy_write_buffer(&mut self) -> Result<(), Error<E>> {
+    //     self.dc.set_low().unwrap_infallible();
+    //     self.spi.write(&[command::WRITE_RAM_BW]).await?;
+    //     self.dc.set_high().unwrap_infallible();
+    //     self.spi.write(&self.buffer[..]).await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     // _PowerOn
     async fn watchy_power_on(&mut self) -> Result<(), Error<E>> {
@@ -478,8 +602,7 @@ where
 
     pub async fn watchy_refresh_full(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
         self.watchy_init(is_hybernating).await?;
-        self.watchy_set_partial_ram_area(0, 0, WIDTH, HEIGHT)
-            .await?;
+        self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
         self.watchy_update_full().await?;
         Ok(())
     }
@@ -507,8 +630,7 @@ where
         self.watchy_init(is_hybernating).await?;
         // }
 
-        self.watchy_set_partial_ram_area(x, y, width, height)
-            .await?;
+        self.set_partial_ram_area(x, y, width, height).await?;
         self.watchy_update_partial().await?;
 
         Ok(())
