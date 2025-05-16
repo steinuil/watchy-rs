@@ -1,3 +1,4 @@
+use defmt::Format;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{
@@ -19,7 +20,7 @@ use static_cell::StaticCell;
 
 use crate::{buttons::WakeupButtons, vibration_motor::VibrationMotor};
 
-#[derive(Debug)]
+#[derive(Debug, Format)]
 pub enum Error {
     I2cConfig(i2c::master::ConfigError),
     SpiConfig(spi::master::ConfigError),

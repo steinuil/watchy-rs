@@ -2,10 +2,10 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 
+use defmt::println;
 use embassy_executor::Spawner;
 use esp_backtrace as _;
 use esp_hal_embassy::main;
-use esp_println::println;
 use watchy::{WakeupCause, Watchy};
 
 mod buttons;
@@ -18,7 +18,7 @@ async fn main(_spawner: Spawner) {
     let mut watchy = match Watchy::init() {
         Ok(watchy) => watchy,
         Err(error) => {
-            println!("{error:?}");
+            println!("{:?}", error);
             return;
         }
     };
