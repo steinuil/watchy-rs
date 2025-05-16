@@ -1,11 +1,14 @@
+use core::fmt::Debug;
+
 use defmt::Format;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{
     self,
+    analog::adc,
     gpio::{GpioPin, Input, Output},
     i2c::{self, master::I2c},
-    peripherals::LPWR,
+    peripherals::{ADC1, LPWR},
     reset::SleepSource,
     rtc_cntl::{
         sleep::{Ext0WakeupSource, Ext1WakeupSource},
@@ -79,16 +82,41 @@ pub enum WakeupCause {
     Unknown(SleepSource),
 }
 
+pub struct Battery<'a> {
+    adc: adc::Adc<'a, ADC1>,
+    pin: adc::AdcPin<GpioPin<34>, ADC1>,
+}
+
+impl Battery<'_> {
+    pub fn new(adc: ADC1, pin: GpioPin<34>) -> Self {
+        let mut config = adc::AdcConfig::new();
+        let pin = config.enable_pin(pin, adc::Attenuation::_11dB);
+        let adc = adc::Adc::new(adc, config);
+
+        Battery { adc, pin }
+    }
+
+    pub fn voltage(&mut self) -> Option<f32> {
+        // For some reason the first read usually returns WouldBlock
+        let _ = self.adc.read_oneshot(&mut self.pin);
+        let raw = self.adc.read_oneshot(&mut self.pin).ok()?;
+        let voltage = (raw as f32 / 4095.0) * 3.3;
+        Some(voltage)
+    }
+}
+
 pub struct Watchy<'a> {
     pub display: Display<'a>,
     pub external_rtc: pcf8563_async::PCF8563<I2cBusDevice<'a>>,
     pub sensor: bma423_async::BMA423<I2cBusDevice<'a>, embassy_time::Delay>,
     pub vibration_motor: VibrationMotor<'a>,
+    // battery_pin: GpioPin<34>,
+    pub battery: Battery<'a>,
     lpwr: LPWR,
     wakeup_pins: WakeupPins,
 }
 
-impl<'a> Watchy<'a> {
+impl Watchy<'_> {
     pub fn init() -> Result<Self, Error> {
         let config = esp_hal::Config::default();
         let peripherals = esp_hal::init(config);
@@ -110,7 +138,6 @@ impl<'a> Watchy<'a> {
             esp_hal::peripherals::Interrupt::SPI3,
             esp_hal::interrupt::Priority::Priority1,
         )?;
-
         defmt::debug!("enabled interrupts");
 
         // Initialize I2C bus
@@ -121,17 +148,18 @@ impl<'a> Watchy<'a> {
             .into_async();
         static I2C_BUS: StaticCell<Mutex<NoopRawMutex, I2c<'static, Async>>> = StaticCell::new();
         let i2c_bus = I2C_BUS.init(Mutex::new(i2c));
-
         defmt::debug!("initialized I2C bus");
 
         // Initialize SPI
-        let spi_config = spi::master::Config::default().with_frequency(20_u32.MHz());
+        // Lowered from 20MHz because it got stuck on writing data.
+        let spi_config = spi::master::Config::default()
+            .with_frequency(16_u32.MHz())
+            .with_mode(spi::Mode::_0);
         let spi = Spi::new(peripherals.SPI3, spi_config)?
             .with_sck(peripherals.GPIO18)
             .with_mosi(peripherals.GPIO23)
             .with_cs(peripherals.GPIO5)
             .into_async();
-
         defmt::debug!("initialized SPI");
 
         // Initialize display
@@ -173,11 +201,14 @@ impl<'a> Watchy<'a> {
 
         let lpwr: LPWR = peripherals.LPWR;
 
+        let battery = Battery::new(peripherals.ADC1, peripherals.GPIO34);
+
         Ok(Watchy {
             display: gdeh0154d67,
             external_rtc: pcf8563,
             sensor: bma423,
             vibration_motor,
+            battery,
             lpwr,
             wakeup_pins,
         })

@@ -179,8 +179,7 @@ where
         self.set_ram_x_address_position(0).await?;
         self.set_ram_y_address_position(0).await?;
 
-        self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command::WRITE_RAM_BW]).await?;
+        self.write_command(command::WRITE_RAM_BW).await?;
         self.dc.set_high().unwrap_infallible();
         self.spi.write(&self.buffer[..]).await?;
 
