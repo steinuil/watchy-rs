@@ -1248,6 +1248,7 @@ dependencies = [
  "defmt 1.0.1",
  "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-futures",
  "embassy-sync",
  "embassy-time",
  "embedded-graphics",
@@ -1258,8 +1259,10 @@ dependencies = [
  "esp-hal-embassy",
  "esp-println",
  "gdeh0154d67-async",
+ "nb 1.1.0",
  "pcf8563-async",
  "static_cell",
+ "unwrap-infallible",
 ]
 
 [[package]]

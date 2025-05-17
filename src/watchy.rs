@@ -98,7 +98,7 @@ pub struct Watchy<'a> {
     pub external_rtc: pcf8563_async::PCF8563<I2cBusDevice<'a>>,
     pub sensor: bma423_async::BMA423<I2cBusDevice<'a>, embassy_time::Delay>,
     pub vibration_motor: VibrationMotor<'a>,
-    pub battery: Battery<'a>,
+    pub battery: Battery<'a, embassy_time::Delay>,
     pub draw_buffer: DrawBuffer,
     lpwr: LPWR,
     wakeup_pins: WakeupPins,
@@ -189,7 +189,7 @@ impl Watchy<'_> {
 
         let lpwr: LPWR = peripherals.LPWR;
 
-        let battery = Battery::new(peripherals.ADC1, peripherals.GPIO34);
+        let battery = Battery::new(peripherals.ADC1, peripherals.GPIO34, embassy_time::Delay);
 
         let draw_buffer = DrawBuffer::empty();
 
@@ -253,7 +253,6 @@ impl Watchy<'_> {
         self.display
             .update_display(
                 gdeh0154d67_async::DisplayUpdateSequence::WATCHY_UPDATE_FULL
-                    | gdeh0154d67_async::DisplayUpdateSequence::USE_DISPLAY_MODE_2
                     | gdeh0154d67_async::DisplayUpdateSequence::DISABLE_ANALOG
                     | gdeh0154d67_async::DisplayUpdateSequence::DISABLE_CLOCK_SIGNAL,
                 None,
