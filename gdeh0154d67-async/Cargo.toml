@@ -7,6 +7,5 @@ edition = "2021"
 bitflags = "2.3.1"
 embedded-hal-async = "1.0.0"
 embedded-hal = "1.0.0"
-esp-println = { version = "0.13.1", features = ["esp32"] }
 unwrap-infallible = "0.1.5"
-embedded-graphics-core = "0.4.0"
+bit-struct = { version = "0.3.2", default-features = false }

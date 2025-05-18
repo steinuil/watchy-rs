@@ -36,6 +36,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit-struct"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "270fbbb014407467f7a2c9b1fa0b74057d5cbc452f18bac3bb5aad601e590521"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "bitfield"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -744,11 +753,10 @@ checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 name = "gdeh0154d67-async"
 version = "0.1.0"
 dependencies = [
+ "bit-struct",
  "bitflags 2.9.1",
- "embedded-graphics-core",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "esp-println",
  "unwrap-infallible",
 ]
 

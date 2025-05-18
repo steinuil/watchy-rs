@@ -101,6 +101,7 @@ mod register {
     pub const CONTROL_STATUS_2: u8 = 0x01;
     pub const SECOND: u8 = 0x02;
     pub const MINUTE: u8 = 0x03;
+    pub const HOUR: u8 = 0x04;
     pub const DAY: u8 = 0x05;
     pub const ALARM_MINUTE: u8 = 0x09;
     pub const CLOCK_OUTPUT: u8 = 0x0D;
@@ -212,7 +213,7 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         .await
     }
 
-    pub async fn enable_alarm_interrupt(&mut self) -> Result<(), Error<E>> {
+    pub async fn enable_alarm(&mut self) -> Result<(), Error<E>> {
         let mut control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
         control_status_2 &= !mask::ALARM_FLAG;
         control_status_2 |= mask::ALARM_INTERRUPT_ENABLED;
@@ -221,7 +222,7 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             .await
     }
 
-    pub async fn disable_alarm_interrupt(&mut self) -> Result<(), Error<E>> {
+    pub async fn disable_alarm(&mut self) -> Result<(), Error<E>> {
         let mut control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
         control_status_2 &= !mask::ALARM_INTERRUPT_ENABLED;
 
@@ -229,13 +230,13 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             .await
     }
 
-    pub async fn is_alarm_interrupt_enabled(&mut self) -> Result<bool, Error<E>> {
+    pub async fn is_alarm_enabled(&mut self) -> Result<bool, Error<E>> {
         let control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
 
         Ok(control_status_2 & mask::ALARM_INTERRUPT_ENABLED != 0)
     }
 
-    pub async fn set_alarm_interrupt(&mut self, alarm: &AlarmConfig) -> Result<(), Error<E>> {
+    pub async fn set_alarm(&mut self, alarm: &AlarmConfig) -> Result<(), Error<E>> {
         self.write(&[
             register::ALARM_MINUTE,
             alarm.minute.map_or(ALARM_DISABLED, dec_to_bcd),

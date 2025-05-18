@@ -28,6 +28,7 @@ impl<E> From<E> for Error<E> {
 
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
+    pub const BOOSTER_SOFT_START_CONTROL: u8 = 0x0c;
     pub const DEEP_SLEEP_MODE: u8 = 0x10;
     pub const DATA_ENTRY_MODE_SETTING: u8 = 0x11;
     pub const SW_RESET: u8 = 0x12;
@@ -81,6 +82,78 @@ pub enum RamOptions {
 
     /// Set 0 bytes to black and 1 bytes to white
     Invert = 0b1000,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhaseDuration {
+    _10ms = 0b00,
+    _20ms = 0b01,
+    _30ms = 0b10,
+    _40ms = 0b11,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhaseDrivingStrength {
+    _1 = 0b000,
+    _2 = 0b001,
+    _3 = 0b010,
+    _4 = 0b011,
+    _5 = 0b100,
+    _6 = 0b101,
+    _7 = 0b110,
+    _8 = 0b111,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhaseMinOffTime {
+    _2_6 = 0b0100,
+    _3_2 = 0b0101,
+    _3_9 = 0b0110,
+    _4_6 = 0b0111,
+    _6_3 = 0b1000,
+    _7_3 = 0b1001,
+    _8_4 = 0b1011,
+    _9_8 = 0b1100,
+    _11_5 = 0b1101,
+    _13_8 = 0b1110,
+    _16_5 = 0b1111,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BoosterPhase {
+    pub driving_strength: PhaseDrivingStrength,
+    pub min_off_time: PhaseMinOffTime,
+    pub duration: PhaseDuration,
+}
+
+impl BoosterPhase {
+    pub(crate) fn to_phase_bits(self) -> u8 {
+        self.driving_strength as u8 | (self.min_off_time as u8) << 3 | 1_u8 << 7
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct BoosterConfig {
+    pub phase1: BoosterPhase,
+    pub phase2: BoosterPhase,
+    pub phase3: BoosterPhase,
+}
+
+impl BoosterConfig {
+    pub(crate) fn to_bytes(self) -> [u8; 4] {
+        let phase1 = self.phase1.to_phase_bits();
+        let phase2 = self.phase2.to_phase_bits();
+        let phase3 = self.phase3.to_phase_bits();
+
+        let duration = self.phase1.duration as u8
+            | (self.phase2.duration as u8) << 2
+            | (self.phase3.duration as u8) << 4;
+
+        [phase1, phase2, phase3, duration]
+    }
 }
 
 bitflags! {
@@ -266,6 +339,14 @@ where
         // According to the SSD1681 spec
         self.delay.delay_ms(10).await;
         Ok(())
+    }
+
+    pub async fn booster_soft_start_control(
+        &mut self,
+        config: BoosterConfig,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(command::BOOSTER_SOFT_START_CONTROL, &config.to_bytes())
+            .await
     }
 
     async fn set_driver_output(&mut self) -> Result<(), Error<E>> {

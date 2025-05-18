@@ -44,6 +44,20 @@ async fn main(_spawner: Spawner) {
     println!("battery voltage: {}", voltage);
     println!("battery percentage: {}", percentage);
 
+    watchy.sensor.initialize().await.unwrap();
+
+    let temperature = watchy
+        .sensor
+        .temperature_celsius()
+        .await
+        .unwrap()
+        .unwrap_or_default();
+
+    let (x, y, z) = watchy.sensor.accelerometer_xyz().await.unwrap();
+
+    println!("temperature: {}", temperature);
+    println!("xyz: {}, {}, {}", x, y, z);
+
     match watchy.get_wakeup_cause() {
         WakeupCause::Reset | WakeupCause::Unknown(_) => {
             println!("reset");
@@ -107,7 +121,7 @@ async fn main(_spawner: Spawner) {
 
     watchy
         .external_rtc
-        .set_alarm_interrupt(&pcf8563_async::AlarmConfig {
+        .set_alarm(&pcf8563_async::AlarmConfig {
             minute: Some(if time.minute() >= 59 {
                 0
             } else {
@@ -117,7 +131,7 @@ async fn main(_spawner: Spawner) {
         })
         .await
         .unwrap();
-    watchy.external_rtc.enable_alarm_interrupt().await.unwrap();
+    watchy.external_rtc.enable_alarm().await.unwrap();
 
     println!("sleep");
 
