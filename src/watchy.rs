@@ -5,6 +5,8 @@ use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use esp_hal::{
     self,
+    dma::{DmaRxBuf, DmaTxBuf},
+    dma_buffers,
     gpio::{GpioPin, Input, Output},
     i2c::{self, master::I2c},
     peripherals::LPWR,
@@ -13,7 +15,10 @@ use esp_hal::{
         sleep::{Ext0WakeupSource, Ext1WakeupSource},
         Rtc,
     },
-    spi::{self, master::Spi},
+    spi::{
+        self,
+        master::{Spi, SpiDmaBus},
+    },
     time::RateExtU32,
     timer::timg::TimerGroup,
     Async,
@@ -59,10 +64,10 @@ impl From<gdeh0154d67_async::Error<spi::Error>> for Error {
     }
 }
 
-type I2cBusDevice<'a> = I2cDevice<'a, NoopRawMutex, I2c<'static, Async>>;
+pub type I2cBusDevice<'a> = I2cDevice<'a, NoopRawMutex, I2c<'static, Async>>;
 
 type Display<'a> = gdeh0154d67_async::GDEH0154D67<
-    Spi<'a, esp_hal::Async>,
+    SpiDmaBus<'a, esp_hal::Async>,
     Output<'a>,
     Output<'a>,
     Input<'a>,
@@ -147,13 +152,22 @@ impl Watchy<'_> {
             .with_sck(peripherals.GPIO18)
             .with_mosi(peripherals.GPIO23)
             .with_cs(peripherals.GPIO5)
+            .with_dma(peripherals.DMA_SPI3)
             .into_async();
+
+        // Use DMA for faster(?) transfers to the display
+        let (rx_buffer, mut tx_buffer) = init_dma_buffers();
+        tx_buffer
+            .set_burst_config(esp_hal::dma::BurstConfig::Enabled)
+            .unwrap();
+
+        let spi_dma_bus = SpiDmaBus::new(spi, rx_buffer, tx_buffer);
         defmt::debug!("initialized SPI");
 
         // Initialize display
         // TODO check if the pin initial values are correct
         let gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
-            spi,
+            spi_dma_bus,
             Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low),
             Output::new(peripherals.GPIO9, esp_hal::gpio::Level::Low),
             Input::new(peripherals.GPIO19, esp_hal::gpio::Pull::Up),
@@ -263,4 +277,13 @@ impl Watchy<'_> {
 
         Ok(())
     }
+}
+
+fn init_dma_buffers() -> (DmaRxBuf, DmaTxBuf) {
+    #[allow(clippy::manual_div_ceil)]
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(64, 5120);
+    let rx_buffer = DmaRxBuf::new(rx_descriptors, rx_buffer).unwrap();
+    let tx_buffer = DmaTxBuf::new(tx_descriptors, tx_buffer).unwrap();
+
+    (rx_buffer, tx_buffer)
 }
