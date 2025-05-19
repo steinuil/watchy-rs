@@ -371,16 +371,13 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         // Wait for the 6kb of config file to be loaded, supposedly
         // The data sheet says it takes at most 140-150ms for the ASIC
         // to be initialized after loading the configuration file.
-        // I'm not sure if this is needed or if it's best to just wait
-        // for 150ms and then call it a day?
-        // TODO run some tests on real hardware
         let mut total_delay_ms = 0;
         loop {
             if total_delay_ms >= ASIC_INITIALIZATION_TIMEOUT_MS {
                 return Err(Error::ASICInitialization);
             }
-            self.delay.delay_ms(50).await;
-            total_delay_ms += 50;
+            self.delay.delay_ms(20).await;
+            total_delay_ms += 20;
 
             match self.read_u8(register::INTERNAL_STATUS).await? & 0xF {
                 // ASIC not initialized

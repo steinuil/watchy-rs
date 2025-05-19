@@ -37,6 +37,13 @@ async fn main(_spawner: Spawner) {
         }
     };
 
+    println!("watchy initialized");
+
+    if let WakeupCause::Reset = watchy.get_wakeup_cause() {
+        watchy.sensor.initialize().await.unwrap();
+        println!("initialized sensor")
+    }
+
     let time = watchy.external_rtc.read_time().await.unwrap();
 
     let voltage = watchy.battery.voltage().await;
@@ -44,18 +51,16 @@ async fn main(_spawner: Spawner) {
     println!("battery voltage: {}", voltage);
     println!("battery percentage: {}", percentage);
 
-    watchy.sensor.initialize().await.unwrap();
-
     let temperature = watchy
         .sensor
         .temperature_celsius()
         .await
         .unwrap()
         .unwrap_or_default();
+    println!("temperature: {}", temperature);
 
     let (x, y, z) = watchy.sensor.accelerometer_xyz().await.unwrap();
 
-    println!("temperature: {}", temperature);
     println!("xyz: {}, {}, {}", x, y, z);
 
     match watchy.get_wakeup_cause() {
@@ -81,6 +86,20 @@ async fn main(_spawner: Spawner) {
             )
             .draw(&mut watchy.draw_buffer)
             .unwrap_infallible();
+
+            Text::with_baseline(
+                "test",
+                Point::new(50, 200 - 20),
+                MonoTextStyle::new(
+                    &embedded_graphics::mono_font::ascii::FONT_10X20,
+                    BinaryColor::On,
+                ),
+                embedded_graphics::text::Baseline::Top,
+            )
+            .draw(&mut watchy.draw_buffer)
+            .unwrap_infallible();
+
+            println!("time: {}", esp_hal::time::now());
 
             watchy.draw_buffer_to_display().await.unwrap();
         }
