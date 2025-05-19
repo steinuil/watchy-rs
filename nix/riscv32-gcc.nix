@@ -15,11 +15,11 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   name = "esp-riscv32-gcc";
-  version = "14.2.0_20241119";
+  version = "16.1.0_20260609";
 
   src = fetchzip {
     url = "https://github.com/espressif/crosstool-NG/releases/download/esp-${finalAttrs.version}/riscv32-esp-elf-${finalAttrs.version}-${targetArch}.tar.xz";
-    hash = "sha256-67O34FYUnVG2nfkfQj2yH874qDSYx4F/16xxPi0kNbY=";
+    hash = "sha256-0000000000000000000000000000000000000000000=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

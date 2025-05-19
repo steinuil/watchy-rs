@@ -14,11 +14,11 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   name = "esp-xtensa-gcc";
-  version = "14.2.0_20241119";
+  version = "16.1.0_20260609";
 
   src = fetchzip {
     url = "https://github.com/espressif/crosstool-NG/releases/download/esp-${finalAttrs.version}/xtensa-esp-elf-${finalAttrs.version}-${targetArch}.tar.xz";
-    hash = "sha256-pX2KCnUoGZtgqFmZEuNRJxDMQgqYYPRpswL3f3T0nWE=";
+    hash = "sha256-D02nz89injwvi+CD8tE8j/xkp1YrS28XvAmqCd3Dm+A=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

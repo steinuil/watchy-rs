@@ -16,11 +16,11 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   name = "esp-rust";
-  version = "1.86.0.0";
+  version = "1.97.0.0";
 
   src = fetchzip {
     url = "https://github.com/esp-rs/rust-build/releases/download/v${finalAttrs.version}/rust-${finalAttrs.version}-${targetArch}.tar.xz";
-    hash = "sha256-NEKcsHbgh0UwESLg5zR2o3ACIwMk4DiEfgzidctTJoY=";
+    hash = "sha256-CnxysCl+Hcllge0olHSBOstgbhqDsCRAhg+mDUAnEs0=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

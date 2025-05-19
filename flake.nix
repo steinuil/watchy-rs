@@ -7,7 +7,10 @@
     fenix.inputs.nixpkgs.follows = "nixpkgs";
 
     naersk.url = "github:nix-community/naersk";
-    naersk.inputs.nixpkgs.follows = "nixpkgs";
+    naersk.inputs = {
+      nixpkgs.follows = "nixpkgs";
+      fenix.follows = "fenix";
+    };
   };
 
   outputs =
@@ -49,7 +52,7 @@
           # nativeBuildInputs = [ toolchain ];
 
           buildInputs = with pkgs; [
-            cargo-espflash
+            espflash
             lldb
             packages.esp-xtensa-gcc
             # packages.esp-riscv32-gcc
