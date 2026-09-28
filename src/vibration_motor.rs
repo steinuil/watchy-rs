@@ -1,14 +1,14 @@
 use embassy_time::{Duration, Timer};
-use esp_hal::gpio::Output;
+use esp_hal::{gpio::Output, peripherals::GPIO13};
 
 pub struct VibrationMotor<'a> {
     pin: Output<'a>,
 }
 
-impl VibrationMotor<'_> {
-    pub fn new(pin: esp_hal::gpio::GpioPin<13>) -> Self {
+impl<'a> VibrationMotor<'a> {
+    pub fn new(pin: GPIO13<'a>) -> Self {
         VibrationMotor {
-            pin: Output::new(pin, esp_hal::gpio::Level::Low),
+            pin: Output::new(pin, esp_hal::gpio::Level::Low, Default::default()),
         }
     }
 
@@ -21,7 +21,7 @@ impl VibrationMotor<'_> {
     }
 
     pub async fn vibrate_linear(&mut self, times: u8, interval: Duration) {
-        for _ in 0..times - 1 {
+        for _ in 0..times.saturating_sub(1) {
             self.enable();
             Timer::after(interval).await;
             self.disable();

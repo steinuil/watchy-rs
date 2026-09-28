@@ -168,8 +168,8 @@ impl Watchy<'_> {
         // TODO check if the pin initial values are correct
         let gdeh0154d67 = gdeh0154d67_async::GDEH0154D67::new(
             spi_dma_bus,
-            Output::new(peripherals.GPIO10, esp_hal::gpio::Level::Low),
-            Output::new(peripherals.GPIO9, esp_hal::gpio::Level::Low),
+            Output::new(peripherals.GPIO10, esp_hal::gpio::Level::High),
+            Output::new(peripherals.GPIO9, esp_hal::gpio::Level::High),
             Input::new(peripherals.GPIO19, esp_hal::gpio::Pull::Up),
             embassy_time::Delay,
         );

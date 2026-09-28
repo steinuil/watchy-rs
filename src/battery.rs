@@ -1,18 +1,18 @@
 use embedded_hal_async::delay::DelayNs;
 use esp_hal::{
     analog::adc::{Adc, AdcConfig, AdcPin, Attenuation},
-    gpio::GpioPin,
-    peripherals::ADC1,
+    peripherals::{ADC1, GPIO34},
+    Blocking,
 };
 
 pub struct Battery<'a, Delay> {
-    adc: Adc<'a, ADC1>,
-    pin: AdcPin<GpioPin<34>, ADC1>,
+    adc: Adc<'a, ADC1<'a>, Blocking>,
+    pin: AdcPin<GPIO34<'a>, ADC1<'a>>,
     delay: Delay,
 }
 
-impl<Delay: DelayNs> Battery<'_, Delay> {
-    pub fn new(adc: ADC1, pin: GpioPin<34>, delay: Delay) -> Self {
+impl<'a, Delay: DelayNs> Battery<'a, Delay> {
+    pub fn new(adc: ADC1<'a>, pin: GPIO34<'a>, delay: Delay) -> Self {
         let mut config = AdcConfig::new();
         let pin = config.enable_pin(pin, Attenuation::_11dB);
         let adc = Adc::new(adc, config);
