@@ -7,5 +7,5 @@ edition = "2021"
 bitflags = "2.3.1"
 embedded-hal-async = "1.0.0"
 embedded-hal = "1.0.0"
-unwrap-infallible = "0.1.5"
+unwrap-infallible = "1.0.0"
 bit-struct = { version = "0.3.2", default-features = false }

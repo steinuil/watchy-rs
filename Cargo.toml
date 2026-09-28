@@ -36,7 +36,7 @@ bitflags = "2.3.1"
 defmt = "1.0.1"
 embassy-futures = { version = "0.1.1", features = ["defmt"] }
 nb = "1.1.0"
-unwrap-infallible = "0.1.5"
+unwrap-infallible = "1.0.0"
 
 bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
