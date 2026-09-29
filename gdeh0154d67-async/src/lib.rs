@@ -390,10 +390,10 @@ where
         self.write_command_data(
             command::SET_RAM_Y_START_END_POSITION,
             &[
-                (y % 0xFF) as u8,
-                (y / 0xFF) as u8,
-                ((y + height - 1) % 0xFF) as u8,
-                ((y + height - 1) / 0xFF) as u8,
+                (y % 256) as u8,
+                (y / 256) as u8,
+                ((y + height - 1) % 256) as u8,
+                ((y + height - 1) / 256) as u8,
             ],
         )
         .await?;
