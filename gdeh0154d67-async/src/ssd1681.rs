@@ -214,6 +214,32 @@ where
         self.write_command_data(command, data).await
     }
 
+    pub async fn auto_write_bw_ram(
+        &mut self,
+        first_step: BwPixel,
+        steps: PatternSteps,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(
+            command::AUTO_WRITE_BW_RAM,
+            &[steps.to_byte(first_step as u8)],
+        )
+        .await?;
+        self.busy_wait().await
+    }
+
+    pub async fn auto_write_red_ram(
+        &mut self,
+        first_step: RedPixel,
+        steps: PatternSteps,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(
+            command::AUTO_WRITE_RED_RAM,
+            &[steps.to_byte(first_step as u8)],
+        )
+        .await?;
+        self.busy_wait().await
+    }
+
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
         self.write_command(command).await?;
         self.write_data(data).await?;
@@ -994,6 +1020,48 @@ impl RamWindow {
     }
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepSize {
+    _8 = 0b000,
+    _16 = 0b001,
+    _32 = 0b010,
+    _64 = 0b011,
+    _128 = 0b100,
+    _200 = 0b101,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BwPixel {
+    Black = 0,
+    White = 1,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedPixel {
+    NotRed = 0,
+    Red,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PatternSteps {
+    pub height: StepSize,
+    pub width: StepSize,
+}
+
+impl PatternSteps {
+    pub const WHOLE_PANEL: Self = Self {
+        height: StepSize::_200,
+        width: StepSize::_200,
+    };
+
+    pub(crate) const fn to_byte(self, first_step: u8) -> u8 {
+        (first_step << 7) | ((self.height as u8) << 4) | self.width as u8
+    }
+}
+
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const GATE_DRIVING_VOLTAGE_CONTROL: u8 = 0x03;
@@ -1015,6 +1083,8 @@ mod command {
     pub const END_OPTION: u8 = 0x3f;
     pub const SET_RAM_X_START_END_POSITION: u8 = 0x44;
     pub const SET_RAM_Y_START_END_POSITION: u8 = 0x45;
+    pub const AUTO_WRITE_RED_RAM: u8 = 0x46;
+    pub const AUTO_WRITE_BW_RAM: u8 = 0x47;
     pub const SET_RAM_X_ADDRESS_POSITION: u8 = 0x4e;
     pub const SET_RAM_Y_ADDRESS_POSITION: u8 = 0x4f;
 }
