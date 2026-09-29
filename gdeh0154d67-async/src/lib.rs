@@ -508,7 +508,7 @@ where
 
         self.set_driver_output().await?;
         self.set_border_waveform(0b101).await?;
-        self.set_display_update_sequence(DisplayUpdateSequence::ENABLE_CLOCK_SIGNAL)
+        self.select_temperature_sensor(TemperatureSensor::Internal)
             .await?;
 
         self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
