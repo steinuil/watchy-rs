@@ -124,11 +124,11 @@ mod register {
     pub const DAY: u8 = 0x05;
     pub const ALARM_MINUTE: u8 = 0x09;
     pub const CLOCK_OUTPUT: u8 = 0x0D;
+    pub const TIMER_CONTROL: u8 = 0x0E;
+    pub const TIMER_VALUE: u8 = 0x0F;
 }
 
-#[allow(dead_code)]
 mod mask {
-    pub const SQUARE_WAVE_ENABLED: u8 = 0x80;
     pub const VOLTAGE_LOW: u8 = 0x80;
 
     pub const CENTURY: u8 = 0x80;
@@ -139,6 +139,8 @@ mod mask {
     pub const MINUTE: u8 = 0b01111111;
     pub const SECOND: u8 = 0b01111111;
 }
+
+const ALARM_DISABLED: u8 = 0x80;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,7 +153,16 @@ bitflags::bitflags! {
     }
 }
 
-const ALARM_DISABLED: u8 = 0x80;
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimerFrequency {
+    _32_768kHz = 0b00,
+    _1_024kHz = 0b01,
+    _32Hz = 0b10,
+    _1Hz = 0b11,
+}
+
+const TIMER_ENABLED: u8 = 0x80;
 
 pub struct PCF8563<I2C> {
     address: u8,
@@ -268,16 +279,9 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             .contains(ControlStatus2::ALARM_INTERRUPT_ENABLED))
     }
 
-    pub async fn clear_previous_alarm(&mut self) -> Result<(), Error<E>> {
+    pub async fn clear_alarm_flag(&mut self) -> Result<(), Error<E>> {
         self.modify_control_status_2(|r| r.difference(ControlStatus2::ALARM_FLAG))
             .await
-    }
-
-    pub async fn is_previous_alarm_active(&mut self) -> Result<bool, Error<E>> {
-        Ok(self
-            .control_status_2()
-            .await?
-            .contains(ControlStatus2::ALARM_FLAG))
     }
 
     pub async fn alarm(&mut self) -> Result<AlarmConfig, Error<E>> {
@@ -305,6 +309,36 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
                 .weekday
                 .map_or(ALARM_DISABLED, |w| dec_to_bcd(w.number_days_from_sunday())),
         ])
+        .await
+    }
+
+    pub async fn set_timer(
+        &mut self,
+        frequency: TimerFrequency,
+        ticks: u8,
+    ) -> Result<(), Error<E>> {
+        self.write(&[
+            register::TIMER_CONTROL,
+            TIMER_ENABLED | frequency as u8,
+            ticks,
+        ])
+        .await
+    }
+
+    pub async fn disable_timer(&mut self) -> Result<(), Error<E>> {
+        self.write(&[register::TIMER_CONTROL, 0x00]).await
+    }
+
+    pub async fn clear_timer_flag(&mut self) -> Result<(), Error<E>> {
+        self.modify_control_status_2(|r| r.difference(ControlStatus2::TIMER_FLAG))
+            .await
+    }
+
+    pub async fn enable_timer_interrupt(&mut self) -> Result<(), Error<E>> {
+        self.modify_control_status_2(|r| {
+            r.difference(ControlStatus2::TIMER_FLAG)
+                .union(ControlStatus2::TIMER_INTERRUPT_ENABLED)
+        })
         .await
     }
 
