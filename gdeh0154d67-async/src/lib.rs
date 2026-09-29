@@ -436,17 +436,6 @@ where
             .await
     }
 
-    // TODO use bitmask or something for this
-    // 0xb1 before writing RAM
-    // 0xc7 to display
-    // 7 = enable clock signal
-    // 6 = enable analog
-    // 5 = Load temperature value
-    // 4 = load LUT with DISPLAY Mode 1
-    // 3 = load LUT or display with DISPLAY Mode 2
-    // 2 = display with DISPLAY Mode 1
-    // 1 = disable analog
-    // 0 = disable clock signal
     async fn set_display_update_sequence(
         &mut self,
         sequence: DisplayUpdateSequence,
