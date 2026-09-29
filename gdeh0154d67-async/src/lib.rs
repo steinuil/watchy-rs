@@ -170,13 +170,19 @@ bitflags! {
         const DEFAULT = Self::X_INCREMENT.bits() | Self::Y_INCREMENT.bits();
     }
 
+    /// Stages of the display update sequence, run in bit order.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct DisplayUpdateSequence : u8 {
         const ENABLE_CLOCK_SIGNAL = 1 << 7;
         const ENABLE_ANALOG = 1 << 6;
         const LOAD_TEMPERATURE_VALUE = 1 << 5;
+
+        /// Load the waveform LUT.
+        ///
+        /// When [`Self::USE_DISPLAY_MODE_2`], loads the mode 2 LUT instead.
         const LOAD_LUT = 1 << 4;
-        /// Toggle between DISPLAY mode 1 and 2
+
+        /// Toggle between DISPLAY mode 1 and 2.
         const USE_DISPLAY_MODE_2 = 1 << 3;
         const DISPLAY = 1 << 2;
         const DISABLE_ANALOG = 1 << 1;
