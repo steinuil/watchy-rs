@@ -42,6 +42,7 @@ mod command {
     pub const DISPLAY_UPDATE_CONTROL_1: u8 = 0x21;
     pub const DISPLAY_UPDATE_CONTROL_2: u8 = 0x22;
     pub const WRITE_RAM_BW: u8 = 0x24;
+    pub const WRITE_RAM_RED: u8 = 0x26;
     pub const BORDER_WAVEFORM_CONTROL: u8 = 0x3c;
     pub const SET_RAM_X_START_END_POSITION: u8 = 0x44;
     pub const SET_RAM_Y_START_END_POSITION: u8 = 0x45;
@@ -389,6 +390,11 @@ where
     ) -> Result<(), Error<E>> {
         self.write_command_data(command::BOOSTER_SOFT_START_CONTROL, &config.to_bytes())
             .await
+    }
+
+    /// Write to the "previous image" plane used by DISPLAY mode 2.
+    pub async fn write_previous_image_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_RAM_RED, data).await
     }
 
     async fn set_driver_output(&mut self) -> Result<(), Error<E>> {
