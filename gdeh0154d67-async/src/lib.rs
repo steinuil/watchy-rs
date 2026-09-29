@@ -73,17 +73,17 @@ pub enum BorderColor {
     Black = 0b010,
 }
 
+/// Control how the bits in RAM are drawn to the display.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Control how the bits in RAM are drawn to the display
 pub enum RamOptions {
-    /// Set 0 bytes to white and 1 bytes to black
+    /// Set 0 bytes to black and 1 bytes to white
     Normal = 0,
 
-    /// Set 1 bytes to black and ignore 0 bytes
-    Bypass0 = 0b100,
+    /// Ignore the RAM entirely and draw the whole window black.
+    BypassAsZero = 0b100,
 
-    /// Set 0 bytes to black and 1 bytes to white
+    /// Set 0 bytes to white and 1 bytes to black
     Invert = 0b1000,
 }
 
