@@ -12,7 +12,6 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
-    window: Option<RamWindow>,
 }
 
 #[derive(Debug)]
@@ -20,6 +19,7 @@ pub enum Error<E> {
     Spi(E),
     BusyTimeout,
     RamAddressOutOfRange,
+    InvalidRamDataLength { expected: usize, actual: usize },
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> SSD1681<SPI, DC, RES, Busy, Delay>
@@ -128,14 +128,6 @@ where
         Ok(())
     }
 
-    pub async fn write_bw_ram(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.write_command_data(command::WRITE_RAM_BW, data).await
-    }
-
-    pub async fn write_red_ram(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.write_command_data(command::WRITE_RAM_RED, data).await
-    }
-
     pub async fn write_lut(&mut self, lut: &WaveformSetting) -> Result<(), Error<E>> {
         self.write_command_data(command::WRITE_LUT_REGISTER, lut.as_bytes())
             .await
@@ -177,11 +169,7 @@ where
         .await?;
 
         self.set_ram_address(window.x_start_byte, window.y_start)
-            .await?;
-
-        self.window = Some(window);
-
-        Ok(())
+            .await
     }
 
     /// Moves the address counters without changing the window.
@@ -197,6 +185,33 @@ where
             &[y as u8, (y >> 8) as u8],
         )
         .await
+    }
+
+    pub async fn write_bw_ram(&mut self, window: RamWindow, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_ram(command::WRITE_RAM_BW, window, data).await
+    }
+
+    pub async fn write_red_ram(&mut self, window: RamWindow, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_ram(command::WRITE_RAM_RED, window, data).await
+    }
+
+    async fn write_ram(
+        &mut self,
+        command: u8,
+        window: RamWindow,
+        data: &[u8],
+    ) -> Result<(), Error<E>> {
+        let expected = window.byte_len();
+
+        if data.len() != expected {
+            return Err(Error::InvalidRamDataLength {
+                expected,
+                actual: data.len(),
+            });
+        }
+
+        self.set_ram_window(window).await?;
+        self.write_command_data(command, data).await
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
