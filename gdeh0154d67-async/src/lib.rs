@@ -4,7 +4,7 @@ use core::convert::Infallible;
 
 use bitflags::bitflags;
 use embassy_futures::select;
-use embedded_hal::digital::{InputPin, OutputPin};
+use embedded_hal::digital::OutputPin;
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiBus};
 use unwrap_infallible::UnwrapInfallible;
 
@@ -275,7 +275,7 @@ where
     SPI: SpiBus<Error = E>,
     DC: OutputPin<Error = Infallible>,
     RES: OutputPin<Error = Infallible>,
-    Busy: InputPin<Error = Infallible> + Wait,
+    Busy: Wait<Error = Infallible>,
     Delay: DelayNs,
 {
     pub fn new(
@@ -550,7 +550,7 @@ where
     SPI: SpiBus<Error = E>,
     DC: OutputPin<Error = Infallible>,
     RES: OutputPin<Error = Infallible>,
-    Busy: InputPin<Error = Infallible> + Wait,
+    Busy: Wait<Error = Infallible>,
     Delay: DelayNs,
 {
     // pub async fn watchy_hibernate(&mut self) -> Result<(), Error<E>> {
