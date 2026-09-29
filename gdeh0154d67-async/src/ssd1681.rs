@@ -1,5 +1,6 @@
 use core::convert::Infallible;
 
+use bitflags::bitflags;
 use embassy_futures::select;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiDevice};
@@ -93,6 +94,11 @@ where
 
     pub async fn set_border_waveform(&mut self, wf: BorderWaveform) -> Result<(), Error<E>> {
         self.write_command_data(command::BORDER_WAVEFORM_CONTROL, &[wf.to_byte()])
+            .await
+    }
+
+    pub async fn set_data_entry_mode(&mut self, mode: DataEntryMode) -> Result<(), Error<E>> {
+        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[mode.to_byte()])
             .await
     }
 
@@ -581,6 +587,41 @@ impl BorderWaveform {
             BorderWaveform::VCOM => 0b10 << 6,
             BorderWaveform::HiZ => 0b11 << 6,
         }
+    }
+}
+
+/// Whether the address counter counts up or down along an axis.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AddressDirection {
+    Decrement = 0,
+
+    #[default]
+    Increment = 1,
+}
+
+/// Which axis the address counter advanced along after each RAM write.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AddressCounterAxis {
+    /// Step along X, wrapping to the next line at the window edge.
+    #[default]
+    X = 0,
+
+    /// Step along Y, wrapping to the next column at the window edge.
+    Y = 1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DataEntryMode {
+    pub x: AddressDirection,
+    pub y: AddressDirection,
+    pub counter_axis: AddressCounterAxis,
+}
+
+impl DataEntryMode {
+    pub(crate) const fn to_byte(self) -> u8 {
+        (self.counter_axis as u8) << 2 | (self.y as u8) << 1 | self.x as u8
     }
 }
 
