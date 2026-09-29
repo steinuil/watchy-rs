@@ -25,12 +25,6 @@ impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
     }
 }
 
-impl<E> From<E> for Error<E> {
-    fn from(err: E) -> Self {
-        Error::Spi(err)
-    }
-}
-
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const BOOSTER_SOFT_START_CONTROL: u8 = 0x0c;
@@ -538,13 +532,13 @@ where
 
     async fn write_command(&mut self, command: u8) -> Result<(), Error<E>> {
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command]).await?;
+        self.spi.write(&[command]).await.map_err(Error::Spi)?;
         Ok(())
     }
 
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(data).await?;
+        self.spi.write(data).await.map_err(Error::Spi)?;
         Ok(())
     }
 }
