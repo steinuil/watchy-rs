@@ -18,8 +18,15 @@ fn bcd_to_dec(n: u8) -> u8 {
 #[derive(Debug)]
 pub enum Error<E> {
     Bus(E),
+
+    /// The date/time reported by the RTC is not valid.
     Time(time::Error),
-    InvalidDateTime,
+
+    /// The weekday reported by the RTC is not valid or does not match with the date.
+    InvalidWeekday,
+
+    /// Clock integrity was compromised due to low voltage being supplied to the chip.
+    ClockIntegrityLost,
 }
 
 impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
@@ -27,7 +34,11 @@ impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
         match self {
             Error::Bus(e) => write!(f, "Bus error: {}", e),
             Error::Time(e) => write!(f, "Invalid time: {}", e),
-            Error::InvalidDateTime => write!(f, "Invalid time"),
+            Error::InvalidWeekday => write!(
+                f,
+                "Invalid time: weekday is invalid or does not match the date"
+            ),
+            Error::ClockIntegrityLost => write!(f, "Clock integrity not guaranteed"),
         }
     }
 }
@@ -47,7 +58,7 @@ fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
         4 => Ok(time::Weekday::Thursday),
         5 => Ok(time::Weekday::Friday),
         6 => Ok(time::Weekday::Saturday),
-        _ => Err(Error::InvalidDateTime),
+        _ => Err(Error::InvalidWeekday),
     }
 }
 
@@ -73,18 +84,26 @@ fn parse_date<E>(buf: &[u8]) -> Result<time::Date, Error<E>> {
         time::Date::from_calendar_date(year, month, day).map_err(|e| Error::Time(e.into()))?;
 
     if date.weekday() != weekday {
-        return Err(Error::InvalidDateTime);
+        return Err(Error::InvalidWeekday);
     }
 
     Ok(date)
 }
 
 fn parse_time<E>(buf: &[u8]) -> Result<time::Time, Error<E>> {
+    if buf[0] & mask::VOLTAGE_LOW != 0 {
+        return Err(Error::ClockIntegrityLost);
+    }
+
     let second = bcd_to_dec(buf[0] & mask::SECOND);
     let minute = bcd_to_dec(buf[1] & mask::MINUTE);
     let hour = bcd_to_dec(buf[2] & mask::HOUR);
 
     time::Time::from_hms(hour, minute, second).map_err(|e| Error::Time(e.into()))
+}
+
+fn parse_alarm_component(byte: u8, mask: u8) -> Option<u8> {
+    (byte & ALARM_DISABLED == 0).then(|| bcd_to_dec(byte & mask))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -109,9 +128,8 @@ mod register {
 
 #[allow(dead_code)]
 mod mask {
-    pub const ALARM_FLAG: u8 = 0x08;
-    pub const ALARM_INTERRUPT_ENABLED: u8 = 0x02;
     pub const SQUARE_WAVE_ENABLED: u8 = 0x80;
+    pub const VOLTAGE_LOW: u8 = 0x80;
 
     pub const CENTURY: u8 = 0x80;
     pub const MONTH: u8 = 0b00011111;
@@ -120,6 +138,17 @@ mod mask {
     pub const HOUR: u8 = 0b00111111;
     pub const MINUTE: u8 = 0b01111111;
     pub const SECOND: u8 = 0b01111111;
+}
+
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct ControlStatus2: u8 {
+        const TIMER_INTERRUPT_ENABLED = 1;
+        const ALARM_INTERRUPT_ENABLED = 1 << 1;
+        const TIMER_FLAG = 1 << 2;
+        const ALARM_FLAG = 1 << 3;
+        const TIMER_PULSES = 1 << 4;
+    }
 }
 
 const ALARM_DISABLED: u8 = 0x80;
@@ -156,6 +185,12 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             0x00,           // timer off
         ])
         .await
+    }
+
+    pub async fn is_clock_integrity_guaranteed(&mut self) -> Result<bool, Error<E>> {
+        let seconds = self.read_register(register::SECOND).await?;
+
+        Ok(seconds & mask::VOLTAGE_LOW == 0)
     }
 
     pub async fn read_date(&mut self) -> Result<time::Date, Error<E>> {
@@ -214,26 +249,50 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     pub async fn enable_alarm(&mut self) -> Result<(), Error<E>> {
-        let mut control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
-        control_status_2 &= !mask::ALARM_FLAG;
-        control_status_2 |= mask::ALARM_INTERRUPT_ENABLED;
-
-        self.write(&[register::CONTROL_STATUS_2, control_status_2])
-            .await
+        self.modify_control_status_2(|r| {
+            r.difference(ControlStatus2::ALARM_FLAG)
+                .union(ControlStatus2::ALARM_INTERRUPT_ENABLED)
+        })
+        .await
     }
 
     pub async fn disable_alarm(&mut self) -> Result<(), Error<E>> {
-        let mut control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
-        control_status_2 &= !mask::ALARM_INTERRUPT_ENABLED;
-
-        self.write(&[register::CONTROL_STATUS_2, control_status_2])
+        self.modify_control_status_2(|r| r.difference(ControlStatus2::ALARM_INTERRUPT_ENABLED))
             .await
     }
 
     pub async fn is_alarm_enabled(&mut self) -> Result<bool, Error<E>> {
-        let control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
+        Ok(self
+            .control_status_2()
+            .await?
+            .contains(ControlStatus2::ALARM_INTERRUPT_ENABLED))
+    }
 
-        Ok(control_status_2 & mask::ALARM_INTERRUPT_ENABLED != 0)
+    pub async fn clear_previous_alarm(&mut self) -> Result<(), Error<E>> {
+        self.modify_control_status_2(|r| r.difference(ControlStatus2::ALARM_FLAG))
+            .await
+    }
+
+    pub async fn is_previous_alarm_active(&mut self) -> Result<bool, Error<E>> {
+        Ok(self
+            .control_status_2()
+            .await?
+            .contains(ControlStatus2::ALARM_FLAG))
+    }
+
+    pub async fn alarm(&mut self) -> Result<AlarmConfig, Error<E>> {
+        let mut buf = [0; 4];
+        self.read_registers(register::ALARM_MINUTE, &mut buf)
+            .await?;
+
+        Ok(AlarmConfig {
+            minute: parse_alarm_component(buf[0], mask::MINUTE),
+            hour: parse_alarm_component(buf[1], mask::HOUR),
+            day: parse_alarm_component(buf[2], mask::DAY),
+            weekday: parse_alarm_component(buf[3], mask::WEEKDAY)
+                .map(parse_weekday)
+                .transpose()?,
+        })
     }
 
     pub async fn set_alarm(&mut self, alarm: &AlarmConfig) -> Result<(), Error<E>> {
@@ -249,9 +308,21 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         .await
     }
 
-    // async fn clear_control_status(&mut self) -> Result<(), Error<E>> {
-    //     self.write(&[register::CONTROL_STATUS_1, 0x00, 0x00]).await
-    // }
+    async fn control_status_2(&mut self) -> Result<ControlStatus2, Error<E>> {
+        let control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
+
+        Ok(ControlStatus2::from_bits_retain(control_status_2))
+    }
+
+    async fn modify_control_status_2<F>(&mut self, f: F) -> Result<(), Error<E>>
+    where
+        F: FnOnce(ControlStatus2) -> ControlStatus2,
+    {
+        let control_status_2 = f(self.control_status_2().await?);
+
+        self.write(&[register::CONTROL_STATUS_2, control_status_2.bits()])
+            .await
+    }
 
     async fn read_registers(&mut self, register: u8, buf: &mut [u8]) -> Result<(), Error<E>> {
         self.i2c.write_read(self.address, &[register], buf).await?;
