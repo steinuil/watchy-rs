@@ -18,7 +18,7 @@ const FEATURE_RW_SIZE: usize = 8;
 
 const ASIC_INITIALIZATION_TIMEOUT_MS: u32 = 200;
 
-const SENSOR_TIME_SYNCHRONIZATION_US: u32 = 450;
+const SENSOR_TIME_SYNCHRONIZATION_US: u32 = 500;
 
 mod feature_offset {
     // This is the value of the feature config data address after it's done
@@ -238,6 +238,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
     }
 
     /// Get the power status of the accelerometer and auxiliary sensors.
+    ///
     /// To check if the accelerometer is enabled:
     /// ```ignore
     /// let is_accelerometer_enabled = bma423
@@ -263,8 +264,8 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
             .await
     }
 
-    /// Temperature in Celsius in the range -104..150.
-    /// Updated every 1.28s.
+    /// Temperature in Celsius in the range -104..150, updated every 1.28s.
+    ///
     /// The temperature sensor is always on when a sensor is active.
     /// When there is no valid temperature information available
     /// (i.e. last measurement before the time defined above),
@@ -300,10 +301,10 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
     }
 
     pub async fn reset_step_counter(&mut self) -> Result<(), Error<E>> {
-        self.set_features(|features| {
-            // The reset mask in the C driver for the step counter is 0b100 so
-            // we could just assign it to 0b100 I guess.
-            features[feature_offset::STEP_COUNTER_SETTINGS_26 + 1] |= 0b100;
+        // The reset mask in the C driver for the step counter is 0b100 so
+        // we could just assign it to 0b100 I guess.
+        self.modify_feature_window::<2, _>(feature_offset::STEP_COUNTER_SETTINGS_26, |b| {
+            b[1] |= 0b100
         })
         .await
     }
@@ -423,7 +424,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
     // TODO can we just load the chunk of the feature file we're interested in
     // using the correct feature_offset instead of loading the whole 64 byte file
     // every time?
-    async fn set_features<F>(&mut self, f: F) -> Result<(), Error<E>>
+    async fn modify_features<F>(&mut self, f: F) -> Result<(), Error<E>>
     where
         F: FnOnce(&mut [u8]),
     {
@@ -437,6 +438,41 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         f(&mut buf);
 
         self.burst_write_features(feature_offset::START, &buf)
+            .await?;
+
+        // Restore advanced power save if it was set before
+        if prev_power_mode.contains(PowerMode::ADVANCED_POWER_SAVE) {
+            self.restore_advanced_power_save(prev_power_mode).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn modify_feature_window<const N: usize, F>(
+        &mut self,
+        offset: usize,
+        f: F,
+    ) -> Result<(), Error<E>>
+    where
+        F: FnOnce(&mut [u8; N]),
+    {
+        const { assert!(N.is_multiple_of(2)) };
+        assert!(offset.is_multiple_of(2));
+        assert!(offset + N <= FEATURE_SIZE);
+
+        // Must disable advanced power save before using the FEATURES_IN register
+        let prev_power_mode = self.disable_advanced_power_save().await?;
+
+        // Here we try to be a bit smarter than the C driver and only load the section
+        // that we need rather than loading the whole 64 byte file if we only need to change
+        // a couple registers.
+        let mut window = [0; N];
+        self.burst_read_features(feature_offset::START + offset, &mut window)
+            .await?;
+
+        f(&mut window);
+
+        self.burst_write_features(feature_offset::START + offset, &window)
             .await?;
 
         // Restore advanced power save if it was set before
