@@ -12,13 +12,14 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
-    // window: Option<RamWindow>,
+    window: Option<RamWindow>,
 }
 
 #[derive(Debug)]
 pub enum Error<E> {
     Spi(E),
     BusyTimeout,
+    RamAddressOutOfRange,
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> SSD1681<SPI, DC, RES, Busy, Delay>
@@ -153,6 +154,49 @@ where
     pub async fn set_display_option(&mut self, option: DisplayOption) -> Result<(), Error<E>> {
         self.write_command_data(command::WRITE_DISPLAY_OPTION, &option.to_bytes())
             .await
+    }
+
+    /// Ses the RAM window for subsequent reads and writes, and homes the address counters
+    /// to its top-left corner.
+    pub async fn set_ram_window(&mut self, window: RamWindow) -> Result<(), Error<E>> {
+        self.write_command_data(
+            command::SET_RAM_X_START_END_POSITION,
+            &[window.x_start_byte, window.x_end_byte],
+        )
+        .await?;
+
+        self.write_command_data(
+            command::SET_RAM_Y_START_END_POSITION,
+            &[
+                window.y_start as u8,
+                (window.y_start >> 8) as u8,
+                window.y_end as u8,
+                (window.y_end >> 8) as u8,
+            ],
+        )
+        .await?;
+
+        self.set_ram_address(window.x_start_byte, window.y_start)
+            .await?;
+
+        self.window = Some(window);
+
+        Ok(())
+    }
+
+    /// Moves the address counters without changing the window.
+    pub async fn set_ram_address(&mut self, x_byte: u8, y: u16) -> Result<(), Error<E>> {
+        if x_byte > RamWindow::MAX_X_BYTE || y > RamWindow::MAX_Y {
+            return Err(Error::RamAddressOutOfRange);
+        }
+
+        self.write_command_data(command::SET_RAM_X_ADDRESS_POSITION, &[x_byte])
+            .await?;
+        self.write_command_data(
+            command::SET_RAM_Y_ADDRESS_POSITION,
+            &[y as u8, (y >> 8) as u8],
+        )
+        .await
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
@@ -860,6 +904,78 @@ impl DisplayOption {
             self.module_id[2],
             self.module_id[3],
         ]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RamWindow {
+    x_start_byte: u8,
+    x_end_byte: u8,
+    y_start: u16,
+    y_end: u16,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RamWindowError {
+    #[error("X positions are 6-bit (0..={})", RamWindow::MAX_X_BYTE)]
+    XOutOfRange,
+
+    #[error("Y positions are 9-bit (0..={})", RamWindow::MAX_Y)]
+    YOutOfRange,
+
+    #[error("start position is past end position")]
+    StartAfterEnd,
+}
+
+impl RamWindow {
+    pub const MAX_X_BYTE: u8 = 0b11_1111;
+    pub const MAX_Y: u16 = 0b1_1111_1111;
+
+    pub const fn new(
+        x_start_byte: u8,
+        x_end_byte: u8,
+        y_start: u16,
+        y_end: u16,
+    ) -> Result<Self, RamWindowError> {
+        if x_start_byte > Self::MAX_X_BYTE || x_end_byte > Self::MAX_X_BYTE {
+            return Err(RamWindowError::XOutOfRange);
+        }
+        if y_start > Self::MAX_Y || y_end > Self::MAX_Y {
+            return Err(RamWindowError::YOutOfRange);
+        }
+        if x_start_byte > x_end_byte || y_start > y_end {
+            return Err(RamWindowError::StartAfterEnd);
+        }
+
+        Ok(Self {
+            x_start_byte,
+            x_end_byte,
+            y_start,
+            y_end,
+        })
+    }
+
+    pub const fn x_start_byte(self) -> u8 {
+        self.x_start_byte
+    }
+
+    pub const fn x_end_byte(self) -> u8 {
+        self.x_end_byte
+    }
+
+    pub const fn y_start(self) -> u16 {
+        self.y_start
+    }
+
+    pub const fn y_end(self) -> u16 {
+        self.y_end
+    }
+
+    /// Exactly how many bytes a RAM write into this window must supply.
+    pub const fn byte_len(self) -> usize {
+        let cols = (self.x_end_byte - self.x_start_byte + 1) as usize;
+        let rows = (self.y_end - self.y_start + 1) as usize;
+        cols * rows
     }
 }
 
