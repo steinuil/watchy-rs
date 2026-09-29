@@ -54,10 +54,10 @@ bitflags! {
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct SensorStatus: u8 {
-        const AUXILIARY_INTERFACE_OPERATION = 0b100;
-        const COMMAND_DECODER_READY         = 0b10000;
-        const AUXILIARY_SENSOR_DATA_READY   = 0b100000;
-        const ACCELEROMETER_DATA_READY      = 0b1000000;
+        const AUXILIARY_INTERFACE_OPERATION = 0b0000_0100;
+        const COMMAND_DECODER_READY         = 0b0001_0000;
+        const AUXILIARY_SENSOR_DATA_READY   = 0b0010_0000;
+        const ACCELEROMETER_DATA_READY      = 0b1000_0000;
     }
 }
 
@@ -119,17 +119,17 @@ impl InterruptPinConfig {
     }
 
     pub(crate) fn from_bits_truncate(bits: u8) -> Self {
-        let trigger_condition = if bits & 0b1 == 0b1 {
+        let trigger_condition = if bits & 0b1 == 0 {
             InterruptPinTriggerCondition::Level
         } else {
             InterruptPinTriggerCondition::Edge
         };
-        let level = if bits & 0b10 == 0b10 {
+        let level = if bits & 0b10 == 0 {
             InterruptPinLevel::ActiveLow
         } else {
             InterruptPinLevel::ActiveHigh
         };
-        let drain_behavior = if bits & 0b100 == 0b100 {
+        let drain_behavior = if bits & 0b100 == 0 {
             InterruptPinDrain::PushPull
         } else {
             InterruptPinDrain::OpenDrain
@@ -309,18 +309,18 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
     }
 
     // TODO check for status & ACCELEROMETER_DATA_READY?
-    pub async fn accelerometer_xyz(&mut self) -> Result<(u16, u16, u16), Error<E>> {
+    pub async fn accelerometer_xyz(&mut self) -> Result<(i16, i16, i16), Error<E>> {
         let mut buf = [0; 6];
         self.read_registers(register::DATA_8, &mut buf).await?;
-
-        let x = ((buf[1] as u16) << 8) | buf[0] as u16;
-        let y = ((buf[3] as u16) << 8) | buf[2] as u16;
-        let z = ((buf[5] as u16) << 8) | buf[4] as u16;
 
         // In the C driver it checks if the device has a 12- or 14-bit resolution,
         // but we only support the BMA423 which has a resolution of 12 bits
         // so we don't need to do that.
-        Ok((x / 0x10, y / 0x10, z / 0x10))
+        Ok((
+            parse_axis(buf[0], buf[1]),
+            parse_axis(buf[2], buf[3]),
+            parse_axis(buf[4], buf[5]),
+        ))
     }
 
     // TODO check for status & AUXILIARY_SENSOR_DATA_READY?
@@ -489,7 +489,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         start_addr: usize,
         buf: &[u8],
     ) -> Result<(), Error<E>> {
-        assert!(buf.len() % 2 == 0);
+        assert!(buf.len().is_multiple_of(2));
 
         self.set_feature_config_data_addr(start_addr).await?;
 
@@ -507,8 +507,8 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
 
         let overflow = buf.len() % FEATURE_RW_SIZE;
         if overflow > 0 {
-            chunk[1..overflow].copy_from_slice(&buf[buf.len() - overflow..]);
-            self.write(&chunk).await?;
+            chunk[1..=overflow].copy_from_slice(&buf[buf.len() - overflow..]);
+            self.write(&chunk[..=overflow]).await?;
         }
 
         Ok(())
@@ -519,7 +519,7 @@ impl<I2C: I2c<Error = E>, E, D: DelayNs> BMA423<I2C, D> {
         start_addr: usize,
         buf: &mut [u8],
     ) -> Result<(), Error<E>> {
-        assert!(buf.len() % 2 == 0);
+        assert!(buf.len().is_multiple_of(2));
 
         self.set_feature_config_data_addr(start_addr).await?;
 
@@ -574,6 +574,10 @@ fn split_feature_conf_data_address(addr: usize) -> (u8, u8) {
 
 fn join_feature_conf_data_address(asic_lsb: u8, asic_msb: u8) -> usize {
     (((asic_msb as usize) << 4) | ((asic_lsb as usize) & 0x0F)) * 2
+}
+
+fn parse_axis(lsb: u8, msb: u8) -> i16 {
+    i16::from_le_bytes([lsb, msb]) / 0x10
 }
 
 // #[test]
