@@ -141,6 +141,21 @@ where
             .await
     }
 
+    pub async fn write_vcom(&mut self, vcom: VCOM) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_VCOM_REGISTER, &[vcom as u8])
+            .await
+    }
+
+    pub async fn set_end_option(&mut self, option: EndOption) -> Result<(), Error<E>> {
+        self.write_command_data(command::END_OPTION, &[option as u8])
+            .await
+    }
+
+    pub async fn set_display_option(&mut self, option: DisplayOption) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_DISPLAY_OPTION, &option.to_bytes())
+            .await
+    }
+
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
         self.write_command(command).await?;
         self.write_data(data).await?;
@@ -720,6 +735,133 @@ impl WaveformSetting {
     }
 }
 
+/// DC VCOM level.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VCOM {
+    M0_2V = 0x08,
+    M0_3V = 0x0C,
+    M0_4V = 0x10,
+    M0_5V = 0x14,
+    M0_6V = 0x18,
+    M0_7V = 0x1C,
+    M0_8V = 0x20,
+    M0_9V = 0x24,
+    M1V = 0x28,
+    M1_1V = 0x2C,
+    M1_2V = 0x30,
+    M1_3V = 0x34,
+    M1_4V = 0x38,
+    M1_5V = 0x3C,
+    M1_6V = 0x40,
+    M1_7V = 0x44,
+    M1_8V = 0x48,
+    M1_9V = 0x4C,
+    M2V = 0x50,
+    M2_1V = 0x54,
+    M2_2V = 0x58,
+    M2_3V = 0x5C,
+    M2_4V = 0x60,
+    M2_5V = 0x64,
+    M2_6V = 0x68,
+    M2_7V = 0x6C,
+    M2_8V = 0x70,
+    M2_9V = 0x74,
+    M3V = 0x78,
+}
+
+/// What the source outputs do when a LUT finishes.
+///
+/// The POR value is `02h`, which the datasheet does not name.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndOption {
+    /// Normal.
+    Normal = 0x22,
+
+    /// Source output level keeps its previous output before power off.
+    KeepPreviousLevel = 0x07,
+}
+
+#[repr(u8)]
+pub enum DisplayMode {
+    Mode1 = 0,
+    Mode2 = 1,
+}
+
+/// Which display mode each of the 36 waveform settings uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaveformModes(u64);
+
+impl WaveformModes {
+    pub const COUNT: u8 = 36;
+
+    pub const fn all(mode: DisplayMode) -> Self {
+        match mode {
+            DisplayMode::Mode1 => Self(0),
+            DisplayMode::Mode2 => Self((1 << Self::COUNT) - 1),
+        }
+    }
+
+    pub const fn get(self, ws: u8) -> Option<DisplayMode> {
+        if ws >= Self::COUNT {
+            return None;
+        }
+
+        match (self.0 >> ws) & 1 {
+            0 => Some(DisplayMode::Mode1),
+            _ => Some(DisplayMode::Mode2),
+        }
+    }
+}
+
+/// Spare VCOM OTP selection.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VcomOtp {
+    #[default]
+    Default = 0,
+    Spare = 1,
+}
+
+/// RAM ping-pong for DISPLAY Mode 2.
+///
+/// When enabled, the controller swaps the b/w and previous planes between updates.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RamPingPong {
+    #[default]
+    Disabled = 0,
+    Enabled = 1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayOption {
+    pub vcom_otp: VcomOtp,
+    pub waveform_modes: WaveformModes,
+    pub ram_ping_pong: RamPingPong,
+    /// Module ID/waveform version.
+    pub module_id: [u8; 4],
+}
+
+impl DisplayOption {
+    pub(crate) const fn to_bytes(self) -> [u8; 10] {
+        let m = self.waveform_modes.0;
+        [
+            (self.vcom_otp as u8) << 7,
+            m as u8,
+            (m >> 8) as u8,
+            (m >> 16) as u8,
+            (m >> 24) as u8,
+            ((m >> 32) as u8 & 0x0F) | ((self.ram_ping_pong as u8) << 6),
+            self.module_id[0],
+            self.module_id[1],
+            self.module_id[2],
+            self.module_id[3],
+        ]
+    }
+}
+
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const GATE_DRIVING_VOLTAGE_CONTROL: u8 = 0x03;
@@ -734,8 +876,11 @@ mod command {
     pub const DISPLAY_UPDATE_CONTROL_2: u8 = 0x22;
     pub const WRITE_RAM_BW: u8 = 0x24;
     pub const WRITE_RAM_RED: u8 = 0x26;
+    pub const WRITE_VCOM_REGISTER: u8 = 0x2c;
     pub const WRITE_LUT_REGISTER: u8 = 0x32;
+    pub const WRITE_DISPLAY_OPTION: u8 = 0x37;
     pub const BORDER_WAVEFORM_CONTROL: u8 = 0x3c;
+    pub const END_OPTION: u8 = 0x3f;
     pub const SET_RAM_X_START_END_POSITION: u8 = 0x44;
     pub const SET_RAM_Y_START_END_POSITION: u8 = 0x45;
     pub const SET_RAM_X_ADDRESS_POSITION: u8 = 0x4e;
