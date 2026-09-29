@@ -142,6 +142,12 @@ impl BoosterPhase {
     }
 }
 
+pub const WATCHY_BOOSTER_PHASE: BoosterPhase = BoosterPhase {
+    driving_strength: PhaseDrivingStrength::_8,
+    min_off_time: PhaseMinOffTime::_2_6,
+    duration: PhaseDuration::_10ms,
+};
+
 #[derive(Clone, Copy, Debug)]
 pub struct BoosterConfig {
     pub phase1: BoosterPhase,
