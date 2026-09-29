@@ -30,6 +30,8 @@ mod battery;
 mod vibration_motor;
 // pub mod watchy;
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 // #[main]
 // async fn main(_spawner: Spawner) {
 //     let mut watchy = match Watchy::init() {
