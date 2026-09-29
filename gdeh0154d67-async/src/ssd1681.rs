@@ -102,6 +102,45 @@ where
             .await
     }
 
+    /// Sets how the bits in RAM are drawn to the display, both for b/w and red RAM.
+    pub async fn set_ram_options(
+        &mut self,
+        bw: RamOptions,
+        red: RamOptions,
+    ) -> Result<(), Error<E>> {
+        let options = (red as u8) << 4 | bw as u8;
+
+        self.write_command_data(command::DISPLAY_UPDATE_CONTROL_1, &[options])
+            .await
+    }
+
+    pub async fn set_update_sequence(
+        &mut self,
+        sequence: DisplayUpdateSequence,
+    ) -> Result<(), Error<E>> {
+        self.write_command_data(command::DISPLAY_UPDATE_CONTROL_2, &[sequence.bits()])
+            .await
+    }
+
+    pub async fn master_activation(&mut self) -> Result<(), Error<E>> {
+        self.write_command(command::MASTER_ACTIVATION).await?;
+        self.busy_wait().await?;
+        Ok(())
+    }
+
+    pub async fn write_bw_ram(&mut self, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_RAM_BW, data).await
+    }
+
+    pub async fn write_red_ram(&mut self, data: &[u8]) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_RAM_RED, data).await
+    }
+
+    pub async fn write_lut(&mut self, lut: &WaveformSetting) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_LUT_REGISTER, lut.as_bytes())
+            .await
+    }
+
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
         self.write_command(command).await?;
         self.write_data(data).await?;
@@ -625,6 +664,62 @@ impl DataEntryMode {
     }
 }
 
+/// Control how the bits in RAM are drawn to the display.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RamOptions {
+    /// Set 0 bytes to black and 1 bytes to white
+    #[default]
+    Normal = 0,
+
+    /// Ignore the RAM entirely and draw the whole window black.
+    BypassAsZero = 0b100,
+
+    /// Set 0 bytes to white and 1 bytes to black
+    Invert = 0b1000,
+}
+
+bitflags! {
+    /// Stages of the display update sequence, run in bit order.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct DisplayUpdateSequence : u8 {
+        const ENABLE_CLOCK_SIGNAL = 1 << 7;
+
+        const ENABLE_ANALOG = 1 << 6;
+
+        /// Load the temperature value from the internal or external sensor.
+        const LOAD_TEMPERATURE_VALUE = 1 << 5;
+
+        /// Load the waveform LUT.
+        ///
+        /// When [`Self::USE_DISPLAY_MODE_2`], loads the mode 2 LUT instead.
+        const LOAD_LUT = 1 << 4;
+
+        /// Toggle between DISPLAY mode 1 and 2.
+        const USE_DISPLAY_MODE_2 = 1 << 3;
+
+        const DISPLAY = 1 << 2;
+
+        const DISABLE_ANALOG = 1 << 1;
+
+        const DISABLE_CLOCK_SIGNAL = 1;
+    }
+}
+
+pub struct WaveformSetting([u8; Self::LENGTH]);
+
+impl WaveformSetting {
+    pub const LENGTH: usize = 153;
+
+    pub const fn from_bytes(bytes: [u8; Self::LENGTH]) -> Self {
+        WaveformSetting(bytes)
+    }
+
+    pub const fn as_bytes(&self) -> &[u8; Self::LENGTH] {
+        &self.0
+    }
+}
+
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const GATE_DRIVING_VOLTAGE_CONTROL: u8 = 0x03;
@@ -639,6 +734,7 @@ mod command {
     pub const DISPLAY_UPDATE_CONTROL_2: u8 = 0x22;
     pub const WRITE_RAM_BW: u8 = 0x24;
     pub const WRITE_RAM_RED: u8 = 0x26;
+    pub const WRITE_LUT_REGISTER: u8 = 0x32;
     pub const BORDER_WAVEFORM_CONTROL: u8 = 0x3c;
     pub const SET_RAM_X_START_END_POSITION: u8 = 0x44;
     pub const SET_RAM_Y_START_END_POSITION: u8 = 0x45;
