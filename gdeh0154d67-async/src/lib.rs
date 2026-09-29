@@ -70,7 +70,7 @@ pub enum DeepSleepMode {
 #[derive(Debug, Clone, Copy)]
 pub enum BorderColor {
     White = 0b101,
-    Black = 0b110,
+    Black = 0b010,
 }
 
 #[repr(u8)]
