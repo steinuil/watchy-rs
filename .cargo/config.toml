@@ -10,11 +10,14 @@ rustflags = [
   "link-arg=-nostartfiles",
 
   # defmt linking options
-  "-C",
-  "link-arg=-Tdefmt.x",
+  # "-C",
+  # "link-arg=-Tdefmt.x",
 ]
 
 target = "xtensa-esp32-none-elf"
 
 [unstable]
 build-std = ["core"]
+
+[env]
+ESP_HAL_CONFIG_MIN_CHIP_REVISION = "100"
