@@ -19,7 +19,6 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
 pub enum Error<E> {
     Spi(E),
     BusyTimeout,
-    Uninitialized,
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> SSD1681<SPI, DC, RES, Busy, Delay>
@@ -141,7 +140,7 @@ where
             .await
     }
 
-    pub async fn write_vcom(&mut self, vcom: VCOM) -> Result<(), Error<E>> {
+    pub async fn write_vcom(&mut self, vcom: Vcom) -> Result<(), Error<E>> {
         self.write_command_data(command::WRITE_VCOM_REGISTER, &[vcom as u8])
             .await
     }
@@ -721,6 +720,7 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaveformSetting([u8; Self::LENGTH]);
 
 impl WaveformSetting {
@@ -738,7 +738,7 @@ impl WaveformSetting {
 /// DC VCOM level.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VCOM {
+pub enum Vcom {
     M0_2V = 0x08,
     M0_3V = 0x0C,
     M0_4V = 0x10,
@@ -784,6 +784,7 @@ pub enum EndOption {
 }
 
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayMode {
     Mode1 = 0,
     Mode2 = 1,
