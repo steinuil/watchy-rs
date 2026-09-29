@@ -621,10 +621,19 @@ where
         height: u16,
         is_hybernating: bool,
     ) -> Result<(), Error<E>> {
-        // here are a bunch of checks to ensure that the parameters are not out of range
-        // of the screen
+        // Clamp the update to the dimensions of the screen.
+        if x >= WIDTH || y >= HEIGHT {
+            return Ok(());
+        }
+
+        let width = width.min(WIDTH - x);
+        let height = height.min(HEIGHT - y);
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+
         let width = width + (x % 8);
-        let width = if width % 8 > 0 {
+        let width = if !width.is_multiple_of(8) {
             width + 8 - (width % 8)
         } else {
             width
