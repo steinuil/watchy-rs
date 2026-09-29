@@ -9,3 +9,4 @@ embedded-hal-async = "1.0.0"
 embedded-hal = "1.0.0"
 unwrap-infallible = "1.0.0"
 bit-struct = { version = "0.3.2", default-features = false }
+embassy-futures = "0.1.2"

@@ -839,6 +839,7 @@ version = "0.1.0"
 dependencies = [
  "bit-struct",
  "bitflags",
+ "embassy-futures",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "unwrap-infallible",

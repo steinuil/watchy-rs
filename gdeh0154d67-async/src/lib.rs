@@ -3,6 +3,7 @@
 use core::convert::Infallible;
 
 use bitflags::bitflags;
+use embassy_futures::select;
 use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiBus};
 use unwrap_infallible::UnwrapInfallible;
@@ -10,12 +11,14 @@ use unwrap_infallible::UnwrapInfallible;
 #[derive(Debug)]
 pub enum Error<E> {
     Spi(E),
+    BusyTimeout,
 }
 
 impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Spi(e) => write!(f, "Bus error: {}", e),
+            Error::BusyTimeout => write!(f, "BUSY stayed high past the configured threshold"),
         }
     }
 }
@@ -223,6 +226,9 @@ bitflags! {
 
 const WIDTH: u16 = 200;
 const HEIGHT: u16 = 200;
+
+const BUSY_SETTLE_MS: u32 = 1;
+const BUSY_TIMEOUT_MS: u32 = 10_000;
 
 pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
     spi: SPI,
@@ -447,7 +453,7 @@ where
 
     async fn master_activation(&mut self) -> Result<(), Error<E>> {
         self.write_command(command::MASTER_ACTIVATION).await?;
-        self.busy_wait().await;
+        self.busy_wait().await?;
         Ok(())
     }
 
@@ -462,8 +468,19 @@ where
 
     // Helpers
 
-    async fn busy_wait(&mut self) {
-        self.busy.wait_for_low().await.unwrap_infallible();
+    async fn busy_wait(&mut self) -> Result<(), Error<E>> {
+        self.delay.delay_ms(BUSY_SETTLE_MS).await;
+
+        let Self { busy, delay, .. } = self;
+
+        match select::select(busy.wait_for_low(), delay.delay_ms(BUSY_TIMEOUT_MS)).await {
+            select::Either::First(result) => {
+                result.unwrap_infallible();
+                Ok(())
+            }
+
+            select::Either::Second(()) => Err(Error::BusyTimeout),
+        }
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
