@@ -213,11 +213,22 @@ bitflags! {
             | Self::DISABLE_CLOCK_SIGNAL.bits();
 
         // 0xfc
-        // Apparently you can skip temperature load to save 5ms
         const WATCHY_UPDATE_PARTIAL = Self::ENABLE_CLOCK_SIGNAL.bits()
             | Self::ENABLE_ANALOG.bits()
             | Self::LOAD_TEMPERATURE_VALUE.bits()
             | Self::LOAD_LUT.bits()
+            | Self::USE_DISPLAY_MODE_2.bits()
+            | Self::DISPLAY.bits();
+
+        // 0xcc
+        //
+        // Partial update reusing the LUT and temperature already loaded by the
+        // power-on sequence, saving ~5ms according to the Watchy firmware.
+        //
+        // Only valid while the controller has not been reset or sent into deep sleep
+        // since that load.
+        const WATCHY_UPDATE_PARTIAL_NO_RELOAD = Self::ENABLE_CLOCK_SIGNAL.bits()
+            | Self::ENABLE_ANALOG.bits()
             | Self::USE_DISPLAY_MODE_2.bits()
             | Self::DISPLAY.bits();
 
