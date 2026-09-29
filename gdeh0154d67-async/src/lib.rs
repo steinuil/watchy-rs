@@ -12,6 +12,7 @@ use unwrap_infallible::UnwrapInfallible;
 pub enum Error<E> {
     Spi(E),
     BusyTimeout,
+    Uninitialized,
 }
 
 impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
@@ -19,6 +20,7 @@ impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
         match self {
             Error::Spi(e) => write!(f, "Bus error: {}", e),
             Error::BusyTimeout => write!(f, "BUSY stayed high past the configured threshold"),
+            Error::Uninitialized => write!(f, "panel is uninitialized"),
         }
     }
 }
@@ -241,6 +243,17 @@ bitflags! {
     }
 }
 
+enum PanelState {
+    /// In deep sleep or not yet reset.
+    Hibernating,
+
+    /// Hardware reset done, no init block sent since.
+    Reset,
+
+    /// Init block sent.
+    Initialized { partial: bool, powered: bool },
+}
+
 const WIDTH: u16 = 200;
 const HEIGHT: u16 = 200;
 
@@ -253,6 +266,7 @@ pub struct GDEH0154D67<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
+    state: PanelState,
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> GDEH0154D67<SPI, DC, RES, Busy, Delay>
@@ -276,6 +290,7 @@ where
             reset: reset_pin,
             busy: busy_pin,
             delay,
+            state: PanelState::Hibernating,
         }
     }
 
@@ -343,7 +358,9 @@ where
     }
 
     pub async fn hibernate(&mut self) -> Result<(), Error<E>> {
-        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await
+        self.set_deep_sleep_mode(DeepSleepMode::RetainRAM).await?;
+        self.state = PanelState::Hibernating;
+        Ok(())
     }
 
     // Commands
@@ -353,6 +370,7 @@ where
         self.delay.delay_ms(10).await;
         self.reset.set_high().unwrap_infallible();
         self.delay.delay_ms(10).await;
+        self.state = PanelState::Reset;
     }
 
     /// Resets the commands and parameters to their S/W Reset default values
@@ -534,18 +552,21 @@ where
     // }
 
     // _InitDisplay
-    async fn watchy_init_display(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
-        if is_hybernating {
+    async fn watchy_init_display(&mut self, partial: bool) -> Result<(), Error<E>> {
+        if matches!(self.state, PanelState::Hibernating) {
             self.hardware_reset().await;
         }
+        let powered = matches!(self.state, PanelState::Initialized { powered: true, .. });
+
         self.software_reset().await?;
 
         self.set_driver_output().await?;
-        self.set_border_waveform(0b101).await?;
         self.select_temperature_sensor(TemperatureSensor::Internal)
             .await?;
-
+        self.set_border_waveform(0b101).await?;
         self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
+
+        self.state = PanelState::Initialized { partial, powered };
 
         Ok(())
     }
@@ -579,24 +600,49 @@ where
 
     // _PowerOn
     async fn watchy_power_on(&mut self) -> Result<(), Error<E>> {
-        self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_DISPLAY_POWER_ON)
-            .await?;
-        self.master_activation().await?;
-        Ok(())
+        match self.state {
+            PanelState::Initialized { powered: true, .. } => Ok(()),
+            PanelState::Initialized {
+                powered: false,
+                partial,
+            } => {
+                self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_DISPLAY_POWER_ON)
+                    .await?;
+                self.master_activation().await?;
+                self.state = PanelState::Initialized {
+                    partial,
+                    powered: true,
+                };
+                Ok(())
+            }
+
+            PanelState::Hibernating | PanelState::Reset => Err(Error::Uninitialized),
+        }
     }
 
     // _Init_Full and _Init_Part
-    async fn watchy_init(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
-        self.watchy_init_display(is_hybernating).await?;
+    async fn watchy_init(&mut self, partial: bool) -> Result<(), Error<E>> {
+        if matches!(self.state, PanelState::Initialized { partial: p, powered: true } if p == partial)
+        {
+            return Ok(());
+        }
+
+        self.watchy_init_display(partial).await?;
         self.watchy_power_on().await?;
         Ok(())
     }
 
     // _PowerOff and powerOff
     pub async fn watchy_power_off(&mut self) -> Result<(), Error<E>> {
+        if !matches!(self.state, PanelState::Initialized { powered: true, .. }) {
+            return Ok(());
+        }
+
         self.set_display_update_sequence(DisplayUpdateSequence::WATCHY_DISPLAY_POWER_OFF)
             .await?;
         self.master_activation().await?;
+        self.state = PanelState::Reset;
+
         Ok(())
     }
 
@@ -617,13 +663,12 @@ where
     }
 
     // refresh(true)
-    pub async fn watchy_refresh(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
-        self.watchy_refresh_partial(0, 0, WIDTH, HEIGHT, is_hybernating)
-            .await
+    pub async fn watchy_refresh(&mut self) -> Result<(), Error<E>> {
+        self.watchy_refresh_partial(0, 0, WIDTH, HEIGHT).await
     }
 
-    pub async fn watchy_refresh_full(&mut self, is_hybernating: bool) -> Result<(), Error<E>> {
-        self.watchy_init(is_hybernating).await?;
+    pub async fn watchy_refresh_full(&mut self) -> Result<(), Error<E>> {
+        self.watchy_init(false).await?;
         self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
         self.watchy_update_full().await?;
         Ok(())
@@ -636,7 +681,6 @@ where
         y: u16,
         width: u16,
         height: u16,
-        is_hybernating: bool,
     ) -> Result<(), Error<E>> {
         // Clamp the update to the dimensions of the screen.
         if x >= WIDTH || y >= HEIGHT {
@@ -657,10 +701,7 @@ where
         };
         let x = x - (x % 8);
 
-        // if !_using_partial_mode {
-        self.watchy_init(is_hybernating).await?;
-        // }
-
+        self.watchy_init(true).await?;
         self.set_partial_ram_area(x, y, width, height).await?;
         self.watchy_update_partial().await?;
 
