@@ -132,7 +132,7 @@ pub struct BoosterPhase {
 
 impl BoosterPhase {
     pub(crate) fn to_phase_bits(self) -> u8 {
-        self.driving_strength as u8 | (self.min_off_time as u8) << 3 | 1_u8 << 7
+        ((self.driving_strength as u8) << 4) | self.min_off_time as u8 | 0x80
     }
 }
 
