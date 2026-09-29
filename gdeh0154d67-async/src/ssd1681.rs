@@ -1,5 +1,6 @@
 use core::convert::Infallible;
 
+use embassy_futures::select;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiDevice};
 use unwrap_infallible::UnwrapInfallible as _;
@@ -10,7 +11,6 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
-    is_hibernating: bool,
     // window: Option<RamWindow>,
 }
 
@@ -29,7 +29,7 @@ where
     Busy: Wait<Error = Infallible>,
     Delay: DelayNs,
 {
-    /// Initializes the chip after supplying power or waking from deep sleep.
+    /// Resets the chip after supplying power or waking from deep sleep.
     pub async fn hardware_reset(&mut self) {
         self.reset.set_low().unwrap_infallible();
         self.delay.delay_ms(10).await;
@@ -43,7 +43,7 @@ where
     /// RAM is unaffected by this command.
     pub async fn software_reset(&mut self) -> Result<(), Error<E>> {
         self.write_command(command::SW_RESET).await?;
-        self.delay.delay_ms(10).await;
+        self.busy_wait().await?;
         Ok(())
     }
 
@@ -113,6 +113,22 @@ where
         self.spi.write(data).await.map_err(Error::Spi)?;
         Ok(())
     }
+
+    /// Wait for the BUSY pad to output low with a timeout.
+    async fn busy_wait(&mut self) -> Result<(), Error<E>> {
+        self.delay.delay_ms(BUSY_SETTLE_MS).await;
+
+        let Self { busy, delay, .. } = self;
+
+        match select::select(busy.wait_for_low(), delay.delay_ms(BUSY_TIMEOUT_MS)).await {
+            select::Either::First(result) => {
+                result.unwrap_infallible();
+                Ok(())
+            }
+
+            select::Either::Second(()) => Err(Error::BusyTimeout),
+        }
+    }
 }
 
 /// Whether RAM contents survive deep sleep.
@@ -127,6 +143,7 @@ pub enum DeepSleepMode {
 }
 
 /// First gate output channel.
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FirstGate {
     /// Start from G0: G0, G1, G2, G3...
@@ -138,6 +155,7 @@ pub enum FirstGate {
 }
 
 /// Gate driver scanning order.
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ScanOrder {
     /// Sequential, left and right gates interlaced: G0, G1, G2...G199
@@ -149,6 +167,7 @@ pub enum ScanOrder {
 }
 
 /// Direction the gate driver scans.
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ScanDirection {
     /// G0 towards G199.
@@ -383,6 +402,7 @@ pub enum NegativeSourceVoltage {
     M17V = 0x3A,
 }
 
+// TODO enforce vsh1 >= vsh2
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceVoltage {
     pub vsh1: SourceDrivingVoltage,
@@ -512,10 +532,10 @@ pub enum BorderLut {
     /// Drives white.
     LUT1 = 0b01,
 
-    /// On a b/w display aliases [`Self::Lut0`], on a 3-color display drives red.
+    /// On a b/w display aliases [`Self::LUT0`], on a 3-color display drives red.
     LUT2 = 0b10,
 
-    /// On a b/w display aliases [`Self::Lut1`], on a 3-color display aliases [`Self::Lut2`].
+    /// On a b/w display aliases [`Self::LUT1`], on a 3-color display aliases [`Self::LUT2`].
     LUT3 = 0b11,
 }
 
@@ -584,3 +604,6 @@ mod command {
     pub const SET_RAM_X_ADDRESS_POSITION: u8 = 0x4e;
     pub const SET_RAM_Y_ADDRESS_POSITION: u8 = 0x4f;
 }
+
+const BUSY_SETTLE_MS: u32 = 1;
+const BUSY_TIMEOUT_MS: u32 = 10_000;
