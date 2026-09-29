@@ -573,9 +573,19 @@ where
         self.software_reset().await?;
 
         self.set_driver_output().await?;
+
+        // On Display.cpp this is behind a reduceBoosterTime flag
+        // which is constexpr true.
+        self.booster_soft_start_control(BoosterConfig {
+            phase1: WATCHY_BOOSTER_PHASE,
+            phase2: WATCHY_BOOSTER_PHASE,
+            phase3: WATCHY_BOOSTER_PHASE,
+        })
+        .await?;
+
         self.select_temperature_sensor(TemperatureSensor::Internal)
             .await?;
-        self.set_border_waveform(0b101).await?;
+        self.set_border_color(BorderColor::White).await?;
         self.set_partial_ram_area(0, 0, WIDTH, HEIGHT).await?;
 
         self.state = PanelState::Initialized { partial, powered };
