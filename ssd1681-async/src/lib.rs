@@ -15,6 +15,7 @@ pub struct Ssd1681<SPI, DC, RES, Busy, Delay> {
     reset: RES,
     busy: Busy,
     delay: Delay,
+    timings: Timings,
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> Ssd1681<SPI, DC, RES, Busy, Delay>
@@ -25,22 +26,23 @@ where
     Busy: Wait<Error = Infallible>,
     Delay: DelayNs,
 {
-    pub fn new(spi: SPI, dc: DC, reset: RES, busy: Busy, delay: Delay) -> Self {
+    pub fn new(spi: SPI, dc: DC, reset: RES, busy: Busy, delay: Delay, timings: Timings) -> Self {
         Ssd1681 {
             spi,
             dc,
             reset,
             busy,
             delay,
+            timings,
         }
     }
 
     /// Resets the chip after supplying power or waking from deep sleep.
     pub async fn hardware_reset(&mut self) {
         self.reset.set_low().unwrap_infallible();
-        self.delay.delay_ms(10).await;
+        self.delay.delay_ns(self.timings.reset_pulse_ns).await;
         self.reset.set_high().unwrap_infallible();
-        self.delay.delay_ms(10).await;
+        self.delay.delay_ns(self.timings.reset_settle_ns).await;
     }
 
     /// Resets the commands and parameters to their S/W Reset default values,
@@ -279,11 +281,16 @@ where
 
     /// Wait for the BUSY pad to output low with a timeout.
     async fn busy_wait(&mut self) -> Result<(), Error<E>> {
-        self.delay.delay_ms(BUSY_SETTLE_MS).await;
+        self.delay.delay_ns(self.timings.busy_settle_ns).await;
 
         let Self { busy, delay, .. } = self;
 
-        match select::select(busy.wait_for_low(), delay.delay_ms(BUSY_TIMEOUT_MS)).await {
+        match select::select(
+            busy.wait_for_low(),
+            delay.delay_ns(self.timings.busy_timeout_ns),
+        )
+        .await
+        {
             select::Either::First(result) => {
                 result.unwrap_infallible();
                 Ok(())
@@ -1105,6 +1112,33 @@ impl Temperature {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Timings {
+    /// RES pin held low during a hardware reset.
+    pub reset_pulse_ns: u32,
+
+    /// Settle after releasing the RES pin before addressing
+    /// the controller.
+    pub reset_settle_ns: u32,
+
+    /// Margin before trusting BUSY after a command that raises it.
+    pub busy_settle_ns: u32,
+
+    /// Timeout for a wedged panel.
+    pub busy_timeout_ns: u32,
+}
+
+impl Default for Timings {
+    fn default() -> Self {
+        Self {
+            reset_pulse_ns: 10_000,
+            reset_settle_ns: 10_000,
+            busy_settle_ns: 1_000,
+            busy_timeout_ns: 10_000_000,
+        }
+    }
+}
+
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const GATE_DRIVING_VOLTAGE_CONTROL: u8 = 0x03;
@@ -1133,9 +1167,6 @@ mod command {
     pub const SET_RAM_Y_ADDRESS_POSITION: u8 = 0x4f;
     pub const NOP: u8 = 0x7f;
 }
-
-const BUSY_SETTLE_MS: u32 = 1;
-const BUSY_TIMEOUT_MS: u32 = 10_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E> {
