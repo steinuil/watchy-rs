@@ -113,7 +113,7 @@ impl<'a> Display<'a> {
     }
 
     pub async fn clear(&mut self, color: BwPixel) -> Result<(), Error> {
-        self.ensure_initialized(true).await?;
+        self.ensure_awake().await?;
         self.controller
             .auto_write_bw_ram(color, PatternSteps::WHOLE_PANEL)
             .await?;
@@ -124,13 +124,13 @@ impl<'a> Display<'a> {
     }
 
     pub async fn write_frame(&mut self, data: &Frame) -> Result<(), Error> {
-        self.ensure_initialized(true).await?;
+        self.ensure_awake().await?;
         self.controller.write_bw_ram(FULL_FRAME, data).await?;
         Ok(())
     }
 
     pub async fn write_previous(&mut self, data: &Frame) -> Result<(), Error> {
-        self.ensure_initialized(true).await?;
+        self.ensure_awake().await?;
         self.controller.write_red_ram(FULL_FRAME, data).await?;
         Ok(())
     }
@@ -156,7 +156,9 @@ impl<'a> Display<'a> {
             return Ok(());
         }
 
-        self.update(POWER_OFF).await
+        self.update(POWER_OFF).await?;
+        self.state = PanelState::Uninitialized;
+        Ok(())
     }
 
     async fn init(&mut self, partial: bool) -> Result<(), Error> {
@@ -178,7 +180,7 @@ impl<'a> Display<'a> {
 
         self.state = PanelState::Initialized {
             partial,
-            powered: matches!(self.state, PanelState::Initialized { powered: true, .. }),
+            powered: false,
         };
 
         Ok(())
@@ -209,6 +211,14 @@ impl<'a> Display<'a> {
         }
 
         self.init(partial).await?;
+        self.power_on().await
+    }
+
+    async fn ensure_awake(&mut self) -> Result<(), Error> {
+        if matches!(self.state, PanelState::Initialized { powered: true, .. }) {
+            return Ok(());
+        }
+        self.init(false).await?;
         self.power_on().await
     }
 

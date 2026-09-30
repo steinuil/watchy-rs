@@ -5,6 +5,7 @@ use core::fmt::Write as _;
 
 use arrayvec::ArrayString;
 use embassy_executor::Spawner;
+// use embassy_time::Delay;
 use embedded_graphics::{
     geometry::Point,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -12,6 +13,7 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
+// use embedded_hal_async::delay::DelayNs as _;
 use esp_backtrace as _;
 use esp_hal::{
     gpio::{Event, Input, InputConfig, Pull, WakeupConfig},
@@ -120,7 +122,7 @@ fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8) {
 
     let origin = Point::new(
         (Display::WIDTH as i32 - 50) / 2,
-        (Display::HEIGHT as i32 - 50) / 2,
+        (Display::HEIGHT as i32 - 20) / 2,
     );
 
     Text::with_baseline(
