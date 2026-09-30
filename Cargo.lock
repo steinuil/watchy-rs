@@ -33,15 +33,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "bit-struct"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "270fbbb014407467f7a2c9b1fa0b74057d5cbc452f18bac3bb5aad601e590521"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "bitfield"
 version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,19 +894,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d758ba1b47b00caf47f24925c0074ecb20d6dfcffe7f6d53395c0465674841a"
 
 [[package]]
-name = "gdeh0154d67-async"
-version = "0.1.0"
-dependencies = [
- "bit-struct",
- "bitflags 2.13.2",
- "embassy-futures",
- "embedded-hal 1.0.0",
- "embedded-hal-async",
- "thiserror",
- "unwrap-infallible",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1609,7 +1587,6 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "esp-rtos",
- "gdeh0154d67-async",
  "pcf8563-async",
 ]
 

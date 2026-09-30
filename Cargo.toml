@@ -1,5 +1,5 @@
 [workspace]
-members = ["bma423-async", "gdeh0154d67-async", "pcf8563-async", "ssd1681-async"]
+members = ["bma423-async", "pcf8563-async", "ssd1681-async"]
 
 [package]
 name = "watchy-rs"
@@ -9,7 +9,6 @@ edition = "2021"
 [dependencies]
 bma423-async = { path = "./bma423-async" }
 pcf8563-async = { path = "./pcf8563-async" }
-gdeh0154d67-async = { path = "./gdeh0154d67-async" }
 
 # esp-hal = { version = "0.23.1", features = ["esp32"] }
 # esp-backtrace = { version = "0.15.1", features = [
