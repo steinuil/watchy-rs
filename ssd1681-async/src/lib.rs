@@ -9,7 +9,7 @@ use unwrap_infallible::UnwrapInfallible as _;
 
 /// The SSD1681 Active Matrix EPD display driver with controller for Red/Black/White EPD displays.
 #[derive(Debug)]
-pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
+pub struct Ssd1681<SPI, DC, RES, Busy, Delay> {
     spi: SPI,
     dc: DC,
     reset: RES,
@@ -17,7 +17,7 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     delay: Delay,
 }
 
-impl<SPI, DC, RES, Busy, Delay, E> SSD1681<SPI, DC, RES, Busy, Delay>
+impl<SPI, DC, RES, Busy, Delay, E> Ssd1681<SPI, DC, RES, Busy, Delay>
 where
     SPI: SpiDevice<Error = E>,
     DC: OutputPin<Error = Infallible>,
@@ -25,6 +25,16 @@ where
     Busy: Wait<Error = Infallible>,
     Delay: DelayNs,
 {
+    pub fn new(spi: SPI, dc: DC, reset: RES, busy: Busy, delay: Delay) -> Self {
+        Ssd1681 {
+            spi,
+            dc,
+            reset,
+            busy,
+            delay,
+        }
+    }
+
     /// Resets the chip after supplying power or waking from deep sleep.
     pub async fn hardware_reset(&mut self) {
         self.reset.set_low().unwrap_infallible();
@@ -128,7 +138,7 @@ where
             .await
     }
 
-    /// Activates the display update sequence set by [`Self::set_update_sequence`].
+    /// Activates the display update sequence set by [`Self::set_display_update_sequence`].
     pub async fn master_activation(&mut self) -> Result<(), Error<E>> {
         self.write_command(command::MASTER_ACTIVATION).await?;
         self.busy_wait().await?;
@@ -155,7 +165,7 @@ where
             .await
     }
 
-    /// Ses the RAM window for subsequent reads and writes, and homes the address counters
+    /// Sets the RAM window for subsequent reads and writes, and homes the address counters
     /// to its top-left corner.
     pub async fn set_ram_window(&mut self, window: RamWindow) -> Result<(), Error<E>> {
         self.write_command_data(
@@ -254,20 +264,17 @@ where
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
         self.write_command(command).await?;
-        self.write_data(data).await?;
-        Ok(())
+        self.write_data(data).await
     }
 
     async fn write_command(&mut self, command: u8) -> Result<(), Error<E>> {
         self.dc.set_low().unwrap_infallible();
-        self.spi.write(&[command]).await.map_err(Error::Spi)?;
-        Ok(())
+        self.spi.write(&[command]).await.map_err(Error::Spi)
     }
 
     async fn write_data(&mut self, data: &[u8]) -> Result<(), Error<E>> {
         self.dc.set_high().unwrap_infallible();
-        self.spi.write(data).await.map_err(Error::Spi)?;
-        Ok(())
+        self.spi.write(data).await.map_err(Error::Spi)
     }
 
     /// Wait for the BUSY pad to output low with a timeout.
@@ -1083,10 +1090,6 @@ impl PatternSteps {
         (first_step << 7) | ((self.height as u8) << 4) | self.width as u8
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("temperature outside the 12-bit range (-128..=+127.9375 °C)")]
-pub struct TemperatureOutOfRange;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Temperature(i16);
