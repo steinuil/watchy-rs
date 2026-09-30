@@ -1396,6 +1396,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssd1681-async"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "embassy-futures",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "thiserror",
+ "unwrap-infallible",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,12 @@
+[package]
+name = "ssd1681-async"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bitflags = "2.3.1"
+embassy-futures = "0.1.2"
+embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
+thiserror = { version = "2.0.21", default-features = false }
+unwrap-infallible = "1.0.0"

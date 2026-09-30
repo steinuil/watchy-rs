@@ -1,3 +1,4 @@
+#![no_std]
 use core::convert::Infallible;
 
 use bitflags::bitflags;
@@ -6,27 +7,14 @@ use embedded_hal::digital::OutputPin;
 use embedded_hal_async::{delay::DelayNs, digital::Wait, spi::SpiDevice};
 use unwrap_infallible::UnwrapInfallible as _;
 
+/// The SSD1681 Active Matrix EPD display driver with controller for Red/Black/White EPD displays.
+#[derive(Debug)]
 pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     spi: SPI,
     dc: DC,
     reset: RES,
     busy: Busy,
     delay: Delay,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error<E> {
-    #[error(transparent)]
-    Spi(E),
-
-    #[error("timed out while waiting for the BUSY pin to switch to low")]
-    BusyTimeout,
-
-    #[error("the provided RAM addresses are out of the valid range")]
-    RamAddressOutOfRange,
-
-    #[error("data does not match the RamWindow's byte length: expected {expected}, got {actual}")]
-    InvalidRamDataLength { expected: usize, actual: usize },
 }
 
 impl<SPI, DC, RES, Busy, Delay, E> SSD1681<SPI, DC, RES, Busy, Delay>
@@ -1145,3 +1133,18 @@ mod command {
 
 const BUSY_SETTLE_MS: u32 = 1;
 const BUSY_TIMEOUT_MS: u32 = 10_000;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error<E> {
+    #[error(transparent)]
+    Spi(E),
+
+    #[error("timed out while waiting for the BUSY pin to switch to low")]
+    BusyTimeout,
+
+    #[error("the provided RAM addresses are out of the valid range")]
+    RamAddressOutOfRange,
+
+    #[error("data does not match the RamWindow's byte length: expected {expected}, got {actual}")]
+    InvalidRamDataLength { expected: usize, actual: usize },
+}

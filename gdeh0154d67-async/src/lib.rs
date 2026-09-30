@@ -1,7 +1,5 @@
 #![no_std]
 
-pub mod ssd1681;
-
 use core::convert::Infallible;
 
 use bitflags::bitflags;
