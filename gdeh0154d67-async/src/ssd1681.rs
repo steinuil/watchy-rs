@@ -92,6 +92,15 @@ where
             .await
     }
 
+    /// Sets the temperature directly, instead of sourcing it from the internal or external sensor.
+    ///
+    /// Setting [`DisplayUpdateSequence::LOAD_TEMPERATURE_VALUE`] in the display update sequence
+    /// will overwrite a value set through this method.
+    pub async fn set_temperature(&mut self, temperature: Temperature) -> Result<(), Error<E>> {
+        self.write_command_data(command::WRITE_TEMPERATURE_REGISTER, &temperature.to_bytes())
+            .await
+    }
+
     pub async fn set_border_waveform(&mut self, wf: BorderWaveform) -> Result<(), Error<E>> {
         self.write_command_data(command::BORDER_WAVEFORM_CONTROL, &[wf.to_byte()])
             .await
@@ -238,6 +247,11 @@ where
         )
         .await?;
         self.busy_wait().await
+    }
+
+    /// Empty command. May be used to terminate RAM writes early.
+    pub async fn nop(&mut self) -> Result<(), Error<E>> {
+        self.write_command(command::NOP).await
     }
 
     async fn write_command_data(&mut self, command: u8, data: &[u8]) -> Result<(), Error<E>> {
@@ -1062,6 +1076,24 @@ impl PatternSteps {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("temperature outside the 12-bit range (-128..=+127.9375 °C)")]
+pub struct TemperatureOutOfRange;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Temperature(i16);
+
+impl Temperature {
+    pub const fn from_celsius(degrees: i8) -> Self {
+        Self(degrees as i16 * 16)
+    }
+
+    pub(crate) const fn to_bytes(self) -> [u8; 2] {
+        let raw = (self.0 as u16) & 0x0FFF;
+        [(raw >> 4) as u8, ((raw & 0x0F) << 4) as u8]
+    }
+}
+
 mod command {
     pub const DRIVER_OUTPUT_CONTROL: u8 = 0x01;
     pub const GATE_DRIVING_VOLTAGE_CONTROL: u8 = 0x03;
@@ -1071,6 +1103,7 @@ mod command {
     pub const DATA_ENTRY_MODE_SETTING: u8 = 0x11;
     pub const SW_RESET: u8 = 0x12;
     pub const TEMPERATURE_SENSOR_CONTROL: u8 = 0x18;
+    pub const WRITE_TEMPERATURE_REGISTER: u8 = 0x1a;
     pub const MASTER_ACTIVATION: u8 = 0x20;
     pub const DISPLAY_UPDATE_CONTROL_1: u8 = 0x21;
     pub const DISPLAY_UPDATE_CONTROL_2: u8 = 0x22;
@@ -1087,6 +1120,7 @@ mod command {
     pub const AUTO_WRITE_BW_RAM: u8 = 0x47;
     pub const SET_RAM_X_ADDRESS_POSITION: u8 = 0x4e;
     pub const SET_RAM_Y_ADDRESS_POSITION: u8 = 0x4f;
+    pub const NOP: u8 = 0x7f;
 }
 
 const BUSY_SETTLE_MS: u32 = 1;
