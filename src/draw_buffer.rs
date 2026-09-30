@@ -15,7 +15,7 @@ impl DrawBuffer {
         DrawBuffer([0xFF; WIDTH * WIDTH / 8])
     }
 
-    pub fn buffer(&self) -> &[u8] {
+    pub fn as_array(&self) -> &[u8; WIDTH * WIDTH / 8] {
         &self.0
     }
 }

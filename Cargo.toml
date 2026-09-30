@@ -42,7 +42,7 @@ ssd1681-async = { path = "./ssd1681-async" }
 # unwrap-infallible = "1.0.0"
 
 esp-hal = { version = "1.2.2", features = ["esp32", "unstable"] }
-esp-rtos = { version = "0.4.0", features = ["esp32"] }
+esp-rtos = { version = "0.4.0", features = ["embassy", "esp32"] }
 esp-backtrace = { version = "0.20.0", features = [
   "esp32",
   "panic-handler",
@@ -55,3 +55,7 @@ embassy-time = "0.5.1"
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32"] }
 embedded-hal-bus = { version = "0.3.0", features = ["async"] }
 thiserror = { version = "2.0.21", default-features = false }
+embassy-executor = "0.10.0"
+esp-alloc = { version = "0.11.0", features = ["esp32"] }
+embedded-graphics = "0.8.2"
+arrayvec = { version = "0.7.8", default-features = false }

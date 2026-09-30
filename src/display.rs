@@ -118,7 +118,7 @@ impl<'a> Display<'a> {
             .auto_write_bw_ram(color, PatternSteps::WHOLE_PANEL)
             .await?;
         self.controller
-            .auto_write_red_ram(RedPixel::NotRed, PatternSteps::WHOLE_PANEL)
+            .auto_write_red_ram(RedPixel::Red, PatternSteps::WHOLE_PANEL)
             .await?;
         Ok(())
     }
