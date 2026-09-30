@@ -40,9 +40,9 @@ where
     /// Resets the chip after supplying power or waking from deep sleep.
     pub async fn hardware_reset(&mut self) {
         self.reset.set_low().unwrap_infallible();
-        self.delay.delay_ns(self.timings.reset_pulse_ns).await;
+        self.delay.delay_us(self.timings.reset_pulse_us).await;
         self.reset.set_high().unwrap_infallible();
-        self.delay.delay_ns(self.timings.reset_settle_ns).await;
+        self.delay.delay_us(self.timings.reset_settle_us).await;
     }
 
     /// Resets the commands and parameters to their S/W Reset default values,
@@ -281,13 +281,11 @@ where
 
     /// Wait for the BUSY pad to output low with a timeout.
     async fn busy_wait(&mut self) -> Result<(), Error<E>> {
-        self.delay.delay_ns(self.timings.busy_settle_ns).await;
-
-        let Self { busy, delay, .. } = self;
+        self.delay.delay_us(self.timings.busy_settle_us).await;
 
         match select::select(
-            busy.wait_for_low(),
-            delay.delay_ns(self.timings.busy_timeout_ns),
+            self.busy.wait_for_low(),
+            self.delay.delay_us(self.timings.busy_timeout_us),
         )
         .await
         {
@@ -1115,27 +1113,31 @@ impl Temperature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Timings {
     /// RES pin held low during a hardware reset.
-    pub reset_pulse_ns: u32,
+    pub reset_pulse_us: u32,
 
     /// Settle after releasing the RES pin before addressing
     /// the controller.
-    pub reset_settle_ns: u32,
+    pub reset_settle_us: u32,
 
     /// Margin before trusting BUSY after a command that raises it.
-    pub busy_settle_ns: u32,
+    pub busy_settle_us: u32,
 
     /// Timeout for a wedged panel.
-    pub busy_timeout_ns: u32,
+    pub busy_timeout_us: u32,
+}
+
+impl Timings {
+    pub const DEFAULT: Self = Self {
+        reset_pulse_us: 10_000,
+        reset_settle_us: 10_000,
+        busy_settle_us: 1_000,
+        busy_timeout_us: 10_000_000,
+    };
 }
 
 impl Default for Timings {
     fn default() -> Self {
-        Self {
-            reset_pulse_ns: 10_000,
-            reset_settle_ns: 10_000,
-            busy_settle_ns: 1_000,
-            busy_timeout_ns: 10_000_000,
-        }
+        Self::DEFAULT
     }
 }
 
