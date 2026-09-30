@@ -14,11 +14,18 @@ pub struct SSD1681<SPI, DC, RES, Busy, Delay> {
     delay: Delay,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error<E> {
+    #[error(transparent)]
     Spi(E),
+
+    #[error("timed out while waiting for the BUSY pin to switch to low")]
     BusyTimeout,
+
+    #[error("the provided RAM addresses are out of the valid range")]
     RamAddressOutOfRange,
+
+    #[error("data does not match the RamWindow's byte length: expected {expected}, got {actual}")]
     InvalidRamDataLength { expected: usize, actual: usize },
 }
 
@@ -106,6 +113,7 @@ where
             .await
     }
 
+    /// Sets the mode used to write bits into RAM.
     pub async fn set_data_entry_mode(&mut self, mode: DataEntryMode) -> Result<(), Error<E>> {
         self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[mode.to_byte()])
             .await
@@ -123,7 +131,8 @@ where
             .await
     }
 
-    pub async fn set_update_sequence(
+    /// Sets the [`DisplayUpdateSequence`] to be activated with [`Self::master_activation`].
+    pub async fn set_display_update_sequence(
         &mut self,
         sequence: DisplayUpdateSequence,
     ) -> Result<(), Error<E>> {
@@ -131,6 +140,7 @@ where
             .await
     }
 
+    /// Activates the display update sequence set by [`Self::set_update_sequence`].
     pub async fn master_activation(&mut self) -> Result<(), Error<E>> {
         self.write_command(command::MASTER_ACTIVATION).await?;
         self.busy_wait().await?;
@@ -796,14 +806,21 @@ bitflags! {
     /// Stages of the display update sequence, run in bit order.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct DisplayUpdateSequence : u8 {
+        /// Starts the oscillator that generates the clock reference for waveform timing
+        /// and analog operations.
         const ENABLE_CLOCK_SIGNAL = 1 << 7;
 
+        /// Powers up the booster and regulators that generate VGH, VGL, VSH1, VSH2, VSL,
+        /// and VCOM.
         const ENABLE_ANALOG = 1 << 6;
 
-        /// Load the temperature value from the internal or external sensor.
+        /// Loads the temperature value from the internal or external sensor.
+        ///
+        /// If the temperature was set manually through [`SSD1681::set_temperature`],
+        /// this stage should be omitted.
         const LOAD_TEMPERATURE_VALUE = 1 << 5;
 
-        /// Load the waveform LUT.
+        /// Loads the waveform LUT.
         ///
         /// When [`Self::USE_DISPLAY_MODE_2`], loads the mode 2 LUT instead.
         const LOAD_LUT = 1 << 4;
@@ -811,10 +828,13 @@ bitflags! {
         /// Toggle between DISPLAY mode 1 and 2.
         const USE_DISPLAY_MODE_2 = 1 << 3;
 
+        /// Drives the panel, running the loaded waveform against RAM and moving the ink.
         const DISPLAY = 1 << 2;
 
+        /// Shuts down the booster and regulators.
         const DISABLE_ANALOG = 1 << 1;
 
+        /// Stops the oscillator.
         const DISABLE_CLOCK_SIGNAL = 1;
     }
 }
