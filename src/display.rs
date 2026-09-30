@@ -114,6 +114,7 @@ impl<'a> Display<'a> {
 
     pub async fn clear(&mut self, color: BwPixel) -> Result<(), Error> {
         self.ensure_awake().await?;
+        // Seems to interact in a weird manner with the panel
         self.controller
             .auto_write_bw_ram(color, PatternSteps::WHOLE_PANEL)
             .await?;
@@ -143,6 +144,17 @@ impl<'a> Display<'a> {
     pub async fn refresh_partial(&mut self) -> Result<(), Error> {
         self.ensure_initialized(true).await?;
         self.update(UPDATE_PARTIAL).await
+    }
+
+    pub async fn draw(&mut self, frame: &Frame, full: bool) -> Result<(), Error> {
+        self.write_frame(frame).await?;
+        if full {
+            self.refresh_full().await?;
+        } else {
+            self.refresh_partial().await?;
+        }
+        self.write_previous(frame).await?;
+        Ok(())
     }
 
     pub async fn hibernate(&mut self) -> Result<(), Error> {

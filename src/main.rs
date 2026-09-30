@@ -82,14 +82,10 @@ async fn main(_spawner: Spawner) {
     let mut buffer = DrawBuffer::empty();
     draw_clock(&mut buffer, hour, minute);
 
-    if cause.is_empty() {
-        display.clear(ssd1681_async::BwPixel::White).await.unwrap();
-        display.write_frame(buffer.as_array()).await.unwrap();
-        display.refresh_full().await.unwrap()
-    } else {
-        display.write_frame(buffer.as_array()).await.unwrap();
-        display.refresh_partial().await.unwrap();
-    }
+    display
+        .draw(buffer.as_array(), cause.is_empty())
+        .await
+        .unwrap();
 
     display.hibernate().await.unwrap();
 
@@ -109,6 +105,8 @@ async fn main(_spawner: Spawner) {
     btn.listen(Event::HighLevel);
     btn.apply_wakeup_config(&WakeupConfig::default().with_low_power_path(true))
         .unwrap();
+
+    println!("going to sleep");
 
     let mut lwpr = LowPower::new(peripherals.LPWR);
     lwpr.sleep_deep(esp_hal::rtc_cntl::sleep::RtcSleepConfig::deep())
