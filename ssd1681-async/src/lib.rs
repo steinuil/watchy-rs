@@ -1172,7 +1172,7 @@ mod command {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E> {
-    #[error(transparent)]
+    #[error("spi transfer error: {0:?}")]
     Spi(E),
 
     #[error("timed out while waiting for the BUSY pin to switch to low")]
