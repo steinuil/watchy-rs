@@ -6,16 +6,16 @@ use embedded_graphics::{
     Pixel,
 };
 
-const WIDTH: usize = 200;
+use crate::display::Display;
 
-pub struct DrawBuffer([u8; WIDTH * WIDTH / 8]);
+pub struct DrawBuffer([u8; Display::FRAME_LEN]);
 
 impl DrawBuffer {
     pub fn empty() -> Self {
-        DrawBuffer([0xFF; WIDTH * WIDTH / 8])
+        DrawBuffer([0xFF; Display::FRAME_LEN])
     }
 
-    pub fn as_array(&self) -> &[u8; WIDTH * WIDTH / 8] {
+    pub fn as_array(&self) -> &[u8; Display::FRAME_LEN] {
         &self.0
     }
 }
@@ -23,8 +23,8 @@ impl DrawBuffer {
 impl OriginDimensions for DrawBuffer {
     fn size(&self) -> embedded_graphics::prelude::Size {
         Size {
-            width: WIDTH as u32,
-            height: WIDTH as u32,
+            width: Display::WIDTH as u32,
+            height: Display::HEIGHT as u32,
         }
     }
 }
@@ -39,7 +39,7 @@ impl DrawTarget for DrawBuffer {
     {
         for Pixel(pos, color) in pixels.into_iter() {
             if let (x @ 0..=199, y @ 0..=199) = pos.into() {
-                let index = x as usize + y as usize * WIDTH;
+                let index = x as usize + y as usize * Display::WIDTH as usize;
                 self.0[index / 8] &= !(1 << (7 - (index % 8)));
                 if color.is_off() {
                     self.0[index / 8] |= 1 << (7 - (index % 8));

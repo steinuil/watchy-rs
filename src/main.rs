@@ -5,6 +5,7 @@ use core::fmt::Write as _;
 
 use arrayvec::ArrayString;
 use embassy_executor::Spawner;
+use embassy_time::Delay;
 // use embassy_time::Delay;
 use embedded_graphics::{
     geometry::Point,
@@ -25,7 +26,7 @@ use esp_hal::{
 use esp_println::{self as _, println};
 use pcf8563_async::PCF8563;
 
-use crate::{display::Display, draw_buffer::DrawBuffer};
+use crate::{battery::Battery, display::Display, draw_buffer::DrawBuffer};
 
 mod battery;
 pub mod display;
@@ -66,6 +67,8 @@ async fn main(_spawner: Spawner) {
     )
     .expect("display initialization");
 
+    let mut battery = Battery::new(peripherals.ADC1, peripherals.GPIO34, Delay);
+
     let cause = esp_hal::rtc_cntl::wakeup_cause();
 
     if cause.contains(WakeupSource::Ext0) {
@@ -73,6 +76,8 @@ async fn main(_spawner: Spawner) {
     }
 
     println!("{:?}", cause);
+
+    println!("voltage: {}", battery.voltage().await);
 
     let (hour, minute) = clock
         .read_time()
