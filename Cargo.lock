@@ -1933,7 +1933,10 @@ dependencies = [
  "arrayvec",
  "bitflags 2.13.2",
  "bma423-async",
+ "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.8.0",
  "embassy-time",
  "embedded-graphics",
  "embedded-hal-async",
@@ -1946,6 +1949,7 @@ dependencies = [
  "esp-rtos",
  "pcf8563-async",
  "ssd1681-async",
+ "static_cell",
  "thiserror",
 ]
 

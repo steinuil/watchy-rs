@@ -5,8 +5,6 @@ use core::fmt::Write as _;
 
 use arrayvec::ArrayString;
 use embassy_executor::Spawner;
-use embassy_time::Delay;
-// use embassy_time::Delay;
 use embedded_graphics::{
     geometry::Point,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -14,24 +12,20 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
-// use embedded_hal_async::delay::DelayNs as _;
 use esp_backtrace as _;
-use esp_hal::{
-    gpio::{Event, Input, InputConfig, Pull, WakeupConfig},
-    i2c,
-    rtc_cntl::{sleep::LowPower, WakeupSource},
-    time::Rate,
-    timer::timg::TimerGroup,
-};
 use esp_println::{self as _, println};
-use pcf8563_async::PCF8563;
 
-use crate::{battery::Battery, display::Display, draw_buffer::DrawBuffer};
+use crate::{
+    display::Display,
+    draw_buffer::DrawBuffer,
+    watchy::{WakeupCause, Watchy},
+};
 
 mod battery;
-pub mod display;
+mod display;
 mod draw_buffer;
 mod vibration_motor;
+mod watchy;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -39,82 +33,35 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(_spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 64 * 1024);
 
-    let peripherals = esp_hal::init(esp_hal::Config::default());
+    let mut watchy = Watchy::init().expect("watchy init");
 
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
-
-    let i2c = i2c::master::I2c::new(
-        peripherals.I2C0,
-        i2c::master::Config::default().with_frequency(Rate::from_khz(400)),
-    )
-    .expect("i2c initialization")
-    .with_sda(peripherals.GPIO21)
-    .with_scl(peripherals.GPIO22)
-    .into_async();
-
-    let mut clock = PCF8563::new(pcf8563_async::SLAVE_ADDRESS, i2c);
-
-    let mut display = display::Display::new(
-        peripherals.SPI3,
-        peripherals.DMA_SPI3,
-        peripherals.GPIO18,
-        peripherals.GPIO23,
-        peripherals.GPIO5,
-        peripherals.GPIO10,
-        peripherals.GPIO9,
-        peripherals.GPIO19,
-    )
-    .expect("display initialization");
-
-    let mut battery = Battery::new(peripherals.ADC1, peripherals.GPIO34, Delay);
-
-    let cause = esp_hal::rtc_cntl::wakeup_cause();
-
-    if cause.contains(WakeupSource::Ext0) {
-        clock.clear_alarm_flag().await.expect("clear alarm");
-    }
+    let cause = watchy.wakeup_cause();
 
     println!("{:?}", cause);
 
-    println!("voltage: {}", battery.voltage().await);
+    println!("voltage: {}", watchy.battery.voltage().await);
 
-    let (hour, minute) = clock
+    if cause == WakeupCause::Reset {
+        watchy.external_rtc.reset().await.expect("RTC reset");
+    }
+
+    let (hour, minute) = watchy
+        .external_rtc
         .read_time()
         .await
         .map_or((0, 0), |t| (t.hour(), t.minute()));
 
-    let mut buffer = DrawBuffer::empty();
-    draw_clock(&mut buffer, hour, minute);
+    draw_clock(&mut watchy.draw_buffer, hour, minute);
 
-    display
-        .draw(buffer.as_array(), cause.is_empty())
+    watchy
+        .display
+        .draw(watchy.draw_buffer.as_array(), cause == WakeupCause::Reset)
         .await
         .unwrap();
 
-    display.hibernate().await.unwrap();
+    watchy.display.hibernate().await.unwrap();
 
-    let mut rtc_int = Input::new(
-        peripherals.GPIO27,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-    rtc_int.listen(Event::LowLevel);
-    rtc_int
-        .apply_wakeup_config(&WakeupConfig::default().with_low_power_path(true))
-        .unwrap();
-
-    let mut btn = Input::new(
-        peripherals.GPIO26,
-        InputConfig::default().with_pull(Pull::Down),
-    );
-    btn.listen(Event::HighLevel);
-    btn.apply_wakeup_config(&WakeupConfig::default().with_low_power_path(true))
-        .unwrap();
-
-    println!("going to sleep");
-
-    let mut lwpr = LowPower::new(peripherals.LPWR);
-    lwpr.sleep_deep(esp_hal::rtc_cntl::sleep::RtcSleepConfig::deep())
+    watchy.hibernate()
 }
 
 fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8) {

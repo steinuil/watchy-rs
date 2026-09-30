@@ -38,6 +38,18 @@ pub struct Display<'a> {
     state: PanelState,
 }
 
+#[derive(Debug)]
+pub struct DisplayConfig<'a> {
+    pub spi: SPI3<'a>,
+    pub dma: DMA_SPI3<'a>,
+    pub sclk: GPIO18<'a>,
+    pub mosi: GPIO23<'a>,
+    pub cs: GPIO5<'a>,
+    pub dc: GPIO10<'a>,
+    pub reset: GPIO9<'a>,
+    pub busy: GPIO19<'a>,
+}
+
 pub type Frame = [u8; FRAME_LEN];
 const FRAME_LEN: usize = Display::WIDTH as usize * Display::HEIGHT as usize / 8;
 
@@ -47,14 +59,16 @@ impl<'a> Display<'a> {
     pub const FRAME_LEN: usize = FRAME_LEN;
 
     pub fn new(
-        spi: SPI3<'a>,
-        dma: DMA_SPI3<'a>,
-        sclk: GPIO18<'a>,
-        mosi: GPIO23<'a>,
-        cs: GPIO5<'a>,
-        dc: GPIO10<'a>,
-        reset: GPIO9<'a>,
-        busy: GPIO19<'a>,
+        DisplayConfig {
+            spi,
+            dma,
+            sclk,
+            mosi,
+            cs,
+            dc,
+            reset,
+            busy,
+        }: DisplayConfig<'a>,
     ) -> Result<Self, Error> {
         // Lowered from 20MHz because it got stuck on writing data.
         let spi_config = spi::master::Config::default()
