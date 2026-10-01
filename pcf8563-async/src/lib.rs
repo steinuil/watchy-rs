@@ -156,10 +156,10 @@ bitflags::bitflags! {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimerFrequency {
-    _32_768kHz = 0b00,
-    _1_024kHz = 0b01,
-    _32Hz = 0b10,
-    _1Hz = 0b11,
+    _4096Hz = 0b00,
+    _64Hz = 0b01,
+    _1Hz = 0b10,
+    _1_60thHz = 0b11,
 }
 
 const TIMER_ENABLED: u8 = 0x80;

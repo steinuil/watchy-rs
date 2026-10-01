@@ -63,3 +63,4 @@ embassy-sync = "0.8.0"
 embassy-embedded-hal = "0.6.0"
 static_cell = "2.1.1"
 embassy-futures = "0.1.2"
+time = { version = "0.3.55", default-features = false, features = ["macros"] }
