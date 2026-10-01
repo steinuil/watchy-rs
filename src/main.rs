@@ -77,15 +77,19 @@ async fn main(_spawner: Spawner) {
 
     if cause == WakeupCause::Reset {
         draw_clock(&mut watchy.draw_buffer, 66, 66);
+        watchy
+            .display
+            .draw_full(watchy.draw_buffer.as_array())
+            .await
+            .unwrap();
     } else {
         draw_clock(&mut watchy.draw_buffer, 88, 88);
+        watchy
+            .display
+            .draw_partial(watchy.draw_buffer.as_array())
+            .await
+            .unwrap();
     }
-
-    watchy
-        .display
-        .draw(watchy.draw_buffer.as_array(), cause == WakeupCause::Reset)
-        .await
-        .unwrap();
 
     watchy.display.hibernate().await.unwrap();
 
