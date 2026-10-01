@@ -41,7 +41,7 @@ async fn main(_spawner: Spawner) {
     let time = match time_res {
         Ok(t) if cause != WakeupCause::Reset => t,
         Ok(_) | Err(_) => {
-            let date_time = time::macros::datetime!(2026-10-01 18:19:00 +2);
+            let date_time = time::macros::datetime!(2026-10-01 18:24:00 +2);
 
             watchy.external_rtc.reset().await.unwrap();
             watchy
@@ -77,7 +77,7 @@ async fn main(_spawner: Spawner) {
 
     let o_clock = cause == WakeupCause::ExternalRtcAlarm && time.minute() == 0;
 
-    if cause == WakeupCause::Reset || o_clock {
+    if cause == WakeupCause::Reset || cause == WakeupCause::ButtonBottomLeft || o_clock {
         draw_clock(&mut watchy.draw_buffer, time.hour(), time.minute());
         watchy
             .display
