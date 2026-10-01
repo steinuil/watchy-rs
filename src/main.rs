@@ -4,6 +4,7 @@
 use core::fmt::Write as _;
 
 use arrayvec::ArrayString;
+use bma423_async::SensorPower;
 use embassy_executor::Spawner;
 use embedded_graphics::{
     geometry::Point,
@@ -43,7 +44,26 @@ async fn main(_spawner: Spawner) {
 
     if cause == WakeupCause::Reset {
         watchy.external_rtc.reset().await.expect("RTC reset");
+        watchy
+            .sensor
+            .initialize()
+            .await
+            .expect("initialize accelerometer");
+        watchy
+            .sensor
+            .toggle_sensors(SensorPower::ACCELEROMETER)
+            .await
+            .expect("toggle accelerometer");
     }
+
+    println!(
+        "enabled sensors: {:?}",
+        watchy.sensor.enabled_sensors().await
+    );
+    println!(
+        "accelerometer: {:?}",
+        watchy.sensor.accelerometer_xyz().await
+    );
 
     let (hour, minute) = watchy
         .external_rtc
@@ -60,6 +80,8 @@ async fn main(_spawner: Spawner) {
         .unwrap();
 
     watchy.display.hibernate().await.unwrap();
+
+    println!("sleeping");
 
     watchy.hibernate()
 }
