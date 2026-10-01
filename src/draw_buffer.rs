@@ -8,7 +8,7 @@ use embedded_graphics::{
 
 use crate::display::Display;
 
-pub struct DrawBuffer([u8; Display::FRAME_LEN]);
+pub struct DrawBuffer(pub [u8; Display::FRAME_LEN]);
 
 impl DrawBuffer {
     pub fn empty() -> Self {
@@ -17,6 +17,10 @@ impl DrawBuffer {
 
     pub fn as_array(&self) -> &[u8; Display::FRAME_LEN] {
         &self.0
+    }
+
+    pub fn clear(&mut self) {
+        self.0.fill(0xFF);
     }
 }
 

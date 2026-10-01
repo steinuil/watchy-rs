@@ -6,6 +6,7 @@ use core::fmt::Write as _;
 use arrayvec::ArrayString;
 use bma423_async::SensorPower;
 use embassy_executor::Spawner;
+use embassy_time::Delay;
 use embedded_graphics::{
     geometry::Point,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -13,6 +14,7 @@ use embedded_graphics::{
     text::Text,
     Drawable,
 };
+use embedded_hal_async::delay::DelayNs as _;
 use esp_backtrace as _;
 use esp_println::{self as _, println};
 
@@ -71,7 +73,13 @@ async fn main(_spawner: Spawner) {
         .await
         .map_or((0, 0), |t| (t.hour(), t.minute()));
 
-    draw_clock(&mut watchy.draw_buffer, hour, minute);
+    println!("time: {hour:02}:{minute:02}");
+
+    if cause == WakeupCause::Reset {
+        draw_clock(&mut watchy.draw_buffer, 66, 66);
+    } else {
+        draw_clock(&mut watchy.draw_buffer, 88, 88);
+    }
 
     watchy
         .display
@@ -87,6 +95,8 @@ async fn main(_spawner: Spawner) {
 }
 
 fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8) {
+    buffer.clear();
+
     let mut text = ArrayString::<5>::new();
     write!(&mut text, "{hour:02}:{minute:02}").expect("write time to buffer");
 

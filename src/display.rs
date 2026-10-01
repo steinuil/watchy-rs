@@ -11,8 +11,8 @@ use esp_hal::{
 };
 use ssd1681_async::{
     BoosterConfig, BoosterPhase, BorderLut, BorderWaveform, BwPixel, DataEntryMode, DeepSleepMode,
-    DisplayUpdateSequence, DriverOutput, GsTransitionControl, PatternSteps, RamWindow, RedPixel,
-    Ssd1681,
+    DisplayUpdateSequence, DriverOutput, GsTransitionControl, PatternSteps, RamOptions, RamWindow,
+    RedPixel, Ssd1681,
 };
 
 type Bus<'a> = ExclusiveDevice<spi::master::SpiDma<'a, Async>, gpio::Output<'a>, Delay>;
@@ -161,17 +161,23 @@ impl<'a> Display<'a> {
     }
 
     pub async fn draw(&mut self, frame: &Frame, full: bool) -> Result<(), Error> {
-        self.write_frame(frame).await?;
         if full {
+            // On a full refresh, it looks like this controller draws the contents of red RAM
+            // and ignores b/w RAM, so we only write red RAM, leaving it in place for a
+            // subsequent partial update.
+            self.write_previous(frame).await?;
             self.refresh_full().await?;
         } else {
+            self.write_frame(frame).await?;
             self.refresh_partial().await?;
+            self.write_previous(frame).await?;
         }
-        self.write_previous(frame).await?;
+
         Ok(())
     }
 
     pub async fn hibernate(&mut self) -> Result<(), Error> {
+        self.power_off().await?;
         self.controller.deep_sleep(DeepSleepMode::RetainRAM).await?;
         self.state = PanelState::Hibernating;
         Ok(())
