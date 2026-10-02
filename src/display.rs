@@ -149,14 +149,21 @@ impl<'a> Display<'a> {
         // If red RAM contains the previous frame, the transition happens with
         // essentially no ghosting.
         //
-        // Watchy's panel seems to enable RAM ping-pong (see ssd1681_async::DisplayOptions).
+        // Watchy's panel seems to enable RAM ping-pong (see ssd1681_async::DisplayOption).
         // This option basically swaps the b/w and red RAM "pointers" after each mode 2 update.
         //
-        // Let's call the two rams RAM0 and RAM1. After a SW_RESET, bw_ram points to RAM0
+        // Let's call the two rams RAM0 and RAM1.
+        // After a software_reset (TODO or is it hardware?), bw_ram points to RAM0
         // and red_ram points to RAM1:
         //
-        //     ram* bw_ram = &RAM0
-        //     ram* red_ram = &RAM1
+        //     typedef uint8_t ram[5000];
+        //     static ram *bw_ram;
+        //     static ram *red_ram;
+        //
+        //     void software_reset() {
+        //         bw_ram = &RAM0;
+        //         red_ram = &RAM1;
+        //     }
         //
         // On a full update, we write to red RAM. I'm not sure whether bw_ram
         // and red_ram are swapped, but for now let's assume they aren't:
@@ -164,6 +171,10 @@ impl<'a> Display<'a> {
         //     void full_update() {
         //         draw_on_panel(*red_ram);
         //     }
+        //
+        // I assume b/w and red RAM aren't swapped because after a full update
+        // you're generally going to do a partial update, and leaving red RAM
+        // where it is would produce correct results by default.
         //
         // On a partial update, we expect red RAM to contain the previous frame,
         // but after the partial update, bw_ram and red_ram are swapped.
@@ -175,19 +186,38 @@ impl<'a> Display<'a> {
         //
         // Hence, the update sequence looks kind of like this:
         //
-        //     char* F0 = prev_frame;
-        //     char* F1 = current_frame;
+        //     uint8_t *F0 = prev_frame;
+        //     uint8_t *F1 = current_frame;
         //
         //     // We'll assume red RAM already contains the previous frame.
-        //     assert(*red_ram == F0);
+        //     assert(memcmp(*red_ram, F0, sizeof(ram)) == 0);
         //
-        //     write(*bw_ram, F1);
+        //     write(bw_ram, F1);
         //     partial_update();
         //
-        //     // The pointers are now swapped, so *bw_ram now contains
+        //     // The pointers are now swapped, so *bw_ram now points to
         //     // the previous frame.
-        //     assert(*red_ram == F1);
-        //     assert(*bw_ram == F0);
+        //     assert(memcmp(*bw_ram, F0, sizeof(ram)) == 0);
+        //     assert(memcmp(*red_ram, F1, sizeof(ram)) == 0);
+        //
+        // This means that a subsequent update can avoid writing to red RAM,
+        // saving a big write.
+        //
+        // On a software reset though, the pointers are reset to their original values,
+        // meaning that a partial update will diff against a stale frame:
+        //
+        //     software_reset();
+        //     assert(memcmp(*bw_ram, F1, sizeof(ram)) == 0);
+        //     assert(memcmp(*red_ram, F0, sizeof(ram)) == 0);
+        //
+        //     write(bw_ram, F2);
+        //     partial_update(); // draw_diff_on_panel(F2, F0);
+        //
+        // So here we write to b/w RAM after every partial update so that both RAMs
+        // always contain the same frame before an update. The alternative would be
+        // some bookkeeping on our side: either own the buffer inside Display and
+        // write it to b/w RAM before hibernating, or maintain the state out of band in
+        // the ESP32's fast RAM.
 
         self.ensure_initialized(true).await?;
         self.controller.write_bw_ram(FULL_FRAME, frame).await?;
