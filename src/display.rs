@@ -125,49 +125,40 @@ impl<'a> Display<'a> {
         })
     }
 
-    // async fn write_frame(&mut self, data: &Frame) -> Result<(), Error> {
-    //     self.ensure_awake().await?;
-    //     self.controller.write_bw_ram(FULL_FRAME, data).await?;
-    //     Ok(())
-    // }
-
-    // async fn write_previous(&mut self, data: &Frame) -> Result<(), Error> {
-    //     self.ensure_awake().await?;
-    //     self.controller.write_red_ram(FULL_FRAME, data).await?;
-    //     Ok(())
-    // }
-
-    // async fn refresh_full(&mut self) -> Result<(), Error> {
-    //     self.ensure_initialized(false).await?;
-    //     self.update(UPDATE_FULL).await
-    // }
-
-    // async fn refresh_partial(&mut self) -> Result<(), Error> {
-    //     self.ensure_initialized(true).await?;
-    //     self.update(UPDATE_PARTIAL).await
-    // }
-
     pub async fn draw_full(&mut self, frame: &Frame) -> Result<(), Error> {
-        // On a full refresh, it looks like this controller draws the contents of red RAM
-        // and ignores b/w RAM, so we only write red RAM, leaving it in place for a
-        // subsequent partial update.
+        // On full update, the controller seems to only draw the contents of red RAM
+        // and completely ignores b/w RAM, so we can avoid writing to the latter.
+        //
+        // Since the partial update expects the contents of red RAM to contain the
+        // previous frame, I think this is done to save us a write when we want to
+        // fully refresh the screen; if full updates were driven by b/w RAM, we'd
+        // have to both write to b/w RAM to drive the full update, and to red RAM
+        // so that a subsequent partial update finds the previous frame there,
+        // which would be wasteful.
         self.ensure_initialized(false).await?;
         self.controller.write_red_ram(FULL_FRAME, frame).await?;
         self.update(UPDATE_FULL).await?;
-        self.controller.write_bw_ram(FULL_FRAME, frame).await?;
         Ok(())
     }
 
     pub async fn draw_partial(&mut self, frame: &Frame) -> Result<(), Error> {
+        // On partial update, the controller seems to use red RAM as "previous frame"
+        // and b/w RAM as "current frame" to select an appropriate waveform for the
+        // transition it needs to do.
+        //
+        // At this point we expect that the previous frame has been written into red RAM,
+        // then we write b/w RAM with the contents of the current frame, activate the
+        // update sequence, and write the contents of the current frame to red RAM so that
+        // the next update can find it there.
         self.ensure_initialized(true).await?;
-        self.controller.write_red_ram(FULL_FRAME, frame).await?;
         self.controller.write_bw_ram(FULL_FRAME, frame).await?;
         self.update(UPDATE_PARTIAL).await?;
+        self.controller.write_red_ram(FULL_FRAME, frame).await?;
         Ok(())
     }
 
     pub async fn hibernate(&mut self) -> Result<(), Error> {
-        // Not sure if this is needed
+        // Not sure if powering off the clock/analog signal manually is needed.
         self.power_off().await?;
         self.controller.deep_sleep(DeepSleepMode::RetainRAM).await?;
         self.state = PanelState::Hibernating;
@@ -228,21 +219,24 @@ impl<'a> Display<'a> {
     }
 
     async fn ensure_initialized(&mut self, partial: bool) -> Result<(), Error> {
-        if matches!(self.state, PanelState::Initialized { partial: p, powered: true } if p == partial)
-        {
-            return Ok(());
-        }
+        match self.state {
+            PanelState::Initialized {
+                partial: p,
+                powered: true,
+            } if p == partial => Ok(()),
 
-        self.init(partial).await?;
-        self.power_on().await
-    }
+            PanelState::Initialized {
+                partial: p,
+                powered: false,
+            } if p == partial => self.power_on().await,
 
-    async fn ensure_awake(&mut self) -> Result<(), Error> {
-        if matches!(self.state, PanelState::Initialized { powered: true, .. }) {
-            return Ok(());
+            PanelState::Initialized { .. }
+            | PanelState::Uninitialized
+            | PanelState::Hibernating => {
+                self.init(partial).await?;
+                self.power_on().await
+            }
         }
-        self.init(false).await?;
-        self.power_on().await
     }
 
     async fn update(&mut self, sequence: DisplayUpdateSequence) -> Result<(), Error> {

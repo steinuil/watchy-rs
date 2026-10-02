@@ -85,14 +85,12 @@ async fn main(_spawner: Spawner) {
             .await
             .unwrap();
     } else {
-        for i in 0..10 {
-            draw_clock(&mut watchy.draw_buffer, time.hour() + i, time.minute());
-            watchy
-                .display
-                .draw_partial(watchy.draw_buffer.as_array())
-                .await
-                .unwrap();
-        }
+        draw_clock(&mut watchy.draw_buffer, time.hour(), time.minute());
+        watchy
+            .display
+            .draw_partial(watchy.draw_buffer.as_array())
+            .await
+            .unwrap();
     }
 
     watchy.display.hibernate().await.unwrap();
