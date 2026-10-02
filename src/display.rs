@@ -142,18 +142,57 @@ impl<'a> Display<'a> {
     }
 
     pub async fn draw_partial(&mut self, frame: &Frame) -> Result<(), Error> {
-        // On partial update, the controller seems to use red RAM as "previous frame"
-        // and b/w RAM as "current frame" to select an appropriate waveform for the
-        // transition it needs to do.
+        // When using display mode 2, the controller uses red RAM as "previous frame"
+        // and b/w RAM as "current frame" to select the appropriate waveforms to use
+        // for the transition.
         //
-        // At this point we expect that the previous frame has been written into red RAM,
-        // then we write b/w RAM with the contents of the current frame, activate the
-        // update sequence, and write the contents of the current frame to red RAM so that
-        // the next update can find it there.
+        // If red RAM contains the previous frame, the transition happens with
+        // essentially no ghosting.
+        //
+        // Watchy's panel seems to enable RAM ping-pong (see ssd1681_async::DisplayOptions).
+        // This option basically swaps the b/w and red RAM "pointers" after each mode 2 update.
+        //
+        // Let's call the two rams RAM0 and RAM1. After a SW_RESET, bw_ram points to RAM0
+        // and red_ram points to RAM1:
+        //
+        //     ram* bw_ram = &RAM0
+        //     ram* red_ram = &RAM1
+        //
+        // On a full update, we write to red RAM. I'm not sure whether bw_ram
+        // and red_ram are swapped, but for now let's assume they aren't:
+        //
+        //     void full_update() {
+        //         draw_on_panel(*red_ram);
+        //     }
+        //
+        // On a partial update, we expect red RAM to contain the previous frame,
+        // but after the partial update, bw_ram and red_ram are swapped.
+        //
+        //     void partial_update() {
+        //         draw_diff_on_panel(*bw_ram, *red_ram);
+        //         swap(&bw_ram, &red_ram);
+        //     }
+        //
+        // Hence, the update sequence looks kind of like this:
+        //
+        //     char* F0 = prev_frame;
+        //     char* F1 = current_frame;
+        //
+        //     // We'll assume red RAM already contains the previous frame.
+        //     assert(*red_ram == F0);
+        //
+        //     write(*bw_ram, F1);
+        //     partial_update();
+        //
+        //     // The pointers are now swapped, so *bw_ram now contains
+        //     // the previous frame.
+        //     assert(*red_ram == F1);
+        //     assert(*bw_ram == F0);
+
         self.ensure_initialized(true).await?;
         self.controller.write_bw_ram(FULL_FRAME, frame).await?;
         self.update(UPDATE_PARTIAL).await?;
-        self.controller.write_red_ram(FULL_FRAME, frame).await?;
+        self.controller.write_bw_ram(FULL_FRAME, frame).await?;
         Ok(())
     }
 

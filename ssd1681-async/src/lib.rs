@@ -946,7 +946,7 @@ pub enum VcomOtp {
 
 /// RAM ping-pong for DISPLAY Mode 2.
 ///
-/// When enabled, the controller swaps the b/w and previous planes between updates.
+/// When enabled, the controller swaps the b/w and red planes between updates.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RamPingPong {
