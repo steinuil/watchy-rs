@@ -204,7 +204,8 @@ impl<'a> Display<'a> {
         // saving a big write.
         //
         // On a software reset though, the pointers are reset to their original values,
-        // meaning that a partial update will diff against a stale frame:
+        // meaning that a partial update will diff against a stale frame (unless we
+        // partially updated the display an even number of times before the reset).
         //
         //     software_reset();
         //     assert(memcmp(*bw_ram, F1, sizeof(ram)) == 0);
@@ -216,8 +217,8 @@ impl<'a> Display<'a> {
         // So here we write to b/w RAM after every partial update so that both RAMs
         // will contain the same frame before an update. The alternative would be
         // some bookkeeping on our side: either own the buffer inside Display and
-        // write it to b/w RAM before hibernating, or maintain the state out of band in
-        // the ESP32's RTC fast memory.
+        // write it to b/w RAM only before hibernating, or maintain the state
+        // out of band in the ESP32's RTC fast memory.
 
         self.ensure_initialized(true).await?;
         self.controller.write_bw_ram(FULL_FRAME, frame).await?;
