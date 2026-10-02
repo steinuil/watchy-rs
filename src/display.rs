@@ -166,7 +166,7 @@ impl<'a> Display<'a> {
         //     }
         //
         // On a full update, we write to red RAM. I'm not sure whether bw_ram
-        // and red_ram are swapped, but for now let's assume they aren't:
+        // and red_ram are swapped, but for now let's assume they aren't (TODO check this):
         //
         //     void full_update() {
         //         draw_on_panel(*red_ram);
@@ -195,7 +195,7 @@ impl<'a> Display<'a> {
         //     write(bw_ram, F1);
         //     partial_update();
         //
-        //     // The pointers are now swapped, so *bw_ram now points to
+        //     // The pointers are now swapped, so bw_ram now points to
         //     // the previous frame.
         //     assert(memcmp(*bw_ram, F0, sizeof(ram)) == 0);
         //     assert(memcmp(*red_ram, F1, sizeof(ram)) == 0);
@@ -214,10 +214,10 @@ impl<'a> Display<'a> {
         //     partial_update(); // draw_diff_on_panel(F2, F0);
         //
         // So here we write to b/w RAM after every partial update so that both RAMs
-        // always contain the same frame before an update. The alternative would be
+        // will contain the same frame before an update. The alternative would be
         // some bookkeeping on our side: either own the buffer inside Display and
         // write it to b/w RAM before hibernating, or maintain the state out of band in
-        // the ESP32's fast RAM.
+        // the ESP32's RTC fast memory.
 
         self.ensure_initialized(true).await?;
         self.controller.write_bw_ram(FULL_FRAME, frame).await?;
