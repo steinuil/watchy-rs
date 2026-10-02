@@ -125,40 +125,45 @@ impl<'a> Display<'a> {
         })
     }
 
-    async fn write_frame(&mut self, data: &Frame) -> Result<(), Error> {
-        self.ensure_awake().await?;
-        self.controller.write_bw_ram(FULL_FRAME, data).await?;
-        Ok(())
-    }
+    // async fn write_frame(&mut self, data: &Frame) -> Result<(), Error> {
+    //     self.ensure_awake().await?;
+    //     self.controller.write_bw_ram(FULL_FRAME, data).await?;
+    //     Ok(())
+    // }
 
-    async fn write_previous(&mut self, data: &Frame) -> Result<(), Error> {
-        self.ensure_awake().await?;
-        self.controller.write_red_ram(FULL_FRAME, data).await?;
-        Ok(())
-    }
+    // async fn write_previous(&mut self, data: &Frame) -> Result<(), Error> {
+    //     self.ensure_awake().await?;
+    //     self.controller.write_red_ram(FULL_FRAME, data).await?;
+    //     Ok(())
+    // }
 
-    async fn refresh_full(&mut self) -> Result<(), Error> {
-        self.ensure_initialized(false).await?;
-        self.update(UPDATE_FULL).await
-    }
+    // async fn refresh_full(&mut self) -> Result<(), Error> {
+    //     self.ensure_initialized(false).await?;
+    //     self.update(UPDATE_FULL).await
+    // }
 
-    async fn refresh_partial(&mut self) -> Result<(), Error> {
-        self.ensure_initialized(true).await?;
-        self.update(UPDATE_PARTIAL).await
-    }
+    // async fn refresh_partial(&mut self) -> Result<(), Error> {
+    //     self.ensure_initialized(true).await?;
+    //     self.update(UPDATE_PARTIAL).await
+    // }
 
     pub async fn draw_full(&mut self, frame: &Frame) -> Result<(), Error> {
         // On a full refresh, it looks like this controller draws the contents of red RAM
         // and ignores b/w RAM, so we only write red RAM, leaving it in place for a
         // subsequent partial update.
-        self.write_previous(frame).await?;
-        self.refresh_full().await
+        self.ensure_initialized(false).await?;
+        self.controller.write_red_ram(FULL_FRAME, frame).await?;
+        self.update(UPDATE_FULL).await?;
+        self.controller.write_bw_ram(FULL_FRAME, frame).await?;
+        Ok(())
     }
 
     pub async fn draw_partial(&mut self, frame: &Frame) -> Result<(), Error> {
-        self.write_frame(frame).await?;
-        self.refresh_partial().await?;
-        self.write_previous(frame).await
+        self.ensure_initialized(true).await?;
+        self.controller.write_red_ram(FULL_FRAME, frame).await?;
+        self.controller.write_bw_ram(FULL_FRAME, frame).await?;
+        self.update(UPDATE_PARTIAL).await?;
+        Ok(())
     }
 
     pub async fn hibernate(&mut self) -> Result<(), Error> {
