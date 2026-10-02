@@ -159,21 +159,21 @@ impl<'a> Display<'a> {
 
     pub async fn hibernate(&mut self) -> Result<(), Error> {
         // Not sure if powering off the clock/analog signal manually is needed.
-        self.power_off().await?;
+        // self.power_off().await?;
         self.controller.deep_sleep(DeepSleepMode::RetainRAM).await?;
         self.state = PanelState::Hibernating;
         Ok(())
     }
 
-    async fn power_off(&mut self) -> Result<(), Error> {
-        if !matches!(self.state, PanelState::Initialized { powered: true, .. }) {
-            return Ok(());
-        }
+    // async fn power_off(&mut self) -> Result<(), Error> {
+    //     if !matches!(self.state, PanelState::Initialized { powered: true, .. }) {
+    //         return Ok(());
+    //     }
 
-        self.update(POWER_OFF).await?;
-        self.state = PanelState::Uninitialized;
-        Ok(())
-    }
+    //     self.update(POWER_OFF).await?;
+    //     self.state = PanelState::Uninitialized;
+    //     Ok(())
+    // }
 
     async fn init(&mut self, partial: bool) -> Result<(), Error> {
         if self.state == PanelState::Hibernating {

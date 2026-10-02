@@ -36,12 +36,14 @@ async fn main(_spawner: Spawner) {
 
     let cause = watchy.wakeup_cause();
 
+    println!("wakeup cause: {:?}", cause);
+
     let time_res = watchy.external_rtc.read_time().await;
 
     let time = match time_res {
         Ok(t) if cause != WakeupCause::Reset => t,
         Ok(_) | Err(_) => {
-            let date_time = time::macros::datetime!(2026-10-02 10:48:00 +2);
+            let date_time = time::macros::datetime!(2026-10-02 12:15:00 +2);
 
             watchy.external_rtc.reset().await.unwrap();
             watchy
@@ -75,17 +77,18 @@ async fn main(_spawner: Spawner) {
 
     watchy.external_rtc.clear_timer_flag().await.unwrap();
 
+    let voltage = watchy.battery.voltage().await;
+    draw_clock(&mut watchy.draw_buffer, time.hour(), time.minute(), voltage);
+
     let o_clock = cause == WakeupCause::ExternalRtcAlarm && time.minute() == 0;
 
     if cause == WakeupCause::Reset || cause == WakeupCause::ButtonBottomLeft || o_clock {
-        draw_clock(&mut watchy.draw_buffer, time.hour(), time.minute());
         watchy
             .display
             .draw_full(watchy.draw_buffer.as_array())
             .await
             .unwrap();
     } else {
-        draw_clock(&mut watchy.draw_buffer, time.hour(), time.minute());
         watchy
             .display
             .draw_partial(watchy.draw_buffer.as_array())
@@ -100,11 +103,8 @@ async fn main(_spawner: Spawner) {
     watchy.hibernate()
 }
 
-fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8) {
+fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8, voltage: f32) {
     buffer.clear();
-
-    // let mut text = ArrayString::<5>::new();
-    // write!(&mut text, "{hour:02}:{minute:02}").expect("write time to buffer");
 
     let style = MonoTextStyle::new(&UPHEAVAL_9, BinaryColor::On);
 
@@ -115,14 +115,22 @@ fn draw_clock(buffer: &mut DrawBuffer, hour: u8, minute: u8) {
     let mut hours = ArrayString::<2>::new();
     write!(&mut hours, "{hour:02}").expect("write hour to buffer");
 
-    Text::new(hours.as_str(), Point::new(1, 11), style)
+    Text::new(hours.as_str(), Point::new(1, 10), style)
         .draw(&mut big)
         .unwrap();
 
     let mut minutes = ArrayString::<2>::new();
     write!(&mut minutes, "{minute:02}").expect("write minute to buffer");
 
-    Text::new(minutes.as_str(), Point::new(1, 22), style)
+    Text::new(minutes.as_str(), Point::new(1, 21), style)
         .draw(&mut big)
+        .unwrap();
+
+    let mut battery = ArrayString::<5>::new();
+    write!(&mut battery, "{}{voltage:.2}", crate::upheaval::BATTERY)
+        .expect("write voltage to buffer");
+
+    Text::new(battery.as_str(), Point::new(8, 192), style)
+        .draw(buffer)
         .unwrap();
 }
