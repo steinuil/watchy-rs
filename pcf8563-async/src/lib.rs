@@ -33,6 +33,10 @@ pub enum Error<E> {
     /// Clock integrity was compromised due to low voltage being supplied to the chip.
     #[error("clock integrity not guaranteed")]
     ClockIntegrityLost,
+
+    /// This RTC only supports years between 1900 and 2099.
+    #[error("year out of supported 1900..=2099 range")]
+    YearOutOfRange,
 }
 
 fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
@@ -225,6 +229,10 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     pub async fn set_date(&mut self, date: time::Date) -> Result<(), Error<E>> {
+        if !(1900..2099).contains(&date.year()) {
+            return Err(Error::YearOutOfRange);
+        }
+
         // time::Month is is represented as an u8 with 1-indexed months so we can just
         // call .into().
         let month = date.month().into();
