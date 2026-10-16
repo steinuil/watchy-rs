@@ -17,38 +17,22 @@ fn test_bcd_to_dec() {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error<E> {
+    #[error(transparent)]
     Bus(E),
 
     /// The date/time reported by the RTC is not valid.
+    #[error("invalid time: {0}")]
     Time(time::Error),
 
     /// The weekday reported by the RTC is not valid or does not match with the date.
+    #[error("invalid time: weekday is invalid or does not match the date")]
     InvalidWeekday,
 
     /// Clock integrity was compromised due to low voltage being supplied to the chip.
+    #[error("clock integrity not guaranteed")]
     ClockIntegrityLost,
-}
-
-impl<E: core::fmt::Display> core::fmt::Display for Error<E> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-        match self {
-            Error::Bus(e) => write!(f, "Bus error: {}", e),
-            Error::Time(e) => write!(f, "Invalid time: {}", e),
-            Error::InvalidWeekday => write!(
-                f,
-                "Invalid time: weekday is invalid or does not match the date"
-            ),
-            Error::ClockIntegrityLost => write!(f, "Clock integrity not guaranteed"),
-        }
-    }
-}
-
-impl<E> core::convert::From<E> for Error<E> {
-    fn from(error: E) -> Self {
-        Error::Bus(error)
-    }
 }
 
 fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
@@ -361,7 +345,10 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     async fn read_registers(&mut self, register: u8, buf: &mut [u8]) -> Result<(), Error<E>> {
-        self.i2c.write_read(self.address, &[register], buf).await?;
+        self.i2c
+            .write_read(self.address, &[register], buf)
+            .await
+            .map_err(Error::Bus)?;
         Ok(())
     }
 
@@ -372,7 +359,10 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     async fn write(&mut self, data: &[u8]) -> Result<(), Error<E>> {
-        self.i2c.write(self.address, data).await?;
+        self.i2c
+            .write(self.address, data)
+            .await
+            .map_err(Error::Bus)?;
         Ok(())
     }
 }
