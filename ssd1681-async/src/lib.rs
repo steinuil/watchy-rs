@@ -163,8 +163,8 @@ where
             .await
     }
 
-    /// Sets the RAM window for subsequent reads and writes, and homes the address counters
-    /// to its top-left corner.
+    /// Sets the RAM window and data entry mode for subsequent reads and writes,
+    /// and homes the address counters to its top-left corner.
     pub async fn set_ram_window(&mut self, window: RamWindow) -> Result<(), Error<E>> {
         self.write_command_data(
             command::DATA_ENTRY_MODE_SETTING,
@@ -1022,6 +1022,10 @@ impl DisplayOption {
     }
 }
 
+/// A RAM region and the order its bytes are written in.
+///
+/// Each axis runs from `start` to `end`. When `start > end`, the address counter
+/// decrements along that axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RamWindow {
     x_start_byte: u8,
