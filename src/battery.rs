@@ -69,10 +69,12 @@ impl<'a, Delay: DelayNs> Battery<'a, Delay> {
 
         // Ported from InfiniTime's LinearApproximation.
         for [p_prev, p] in Self::DISCHARGE_CURVE.array_windows() {
-            if voltage < p_prev.volts {
-                return p_prev.percent
+            if voltage < p.volts {
+                let percent = p_prev.percent
                     + (voltage - p_prev.volts) * (p.percent - p_prev.percent)
                         / (p.volts - p_prev.volts);
+
+                return percent.clamp(0.0, 100.0);
             }
         }
 
