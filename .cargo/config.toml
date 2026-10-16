@@ -1,7 +1,5 @@
 [target.xtensa-esp32-none-elf]
 runner = "espflash --monitor"
-
-[build]
 rustflags = [
   "-C",
   "link-arg=-Tlinkall.x",
@@ -14,6 +12,7 @@ rustflags = [
   # "link-arg=-Tdefmt.x",
 ]
 
+[build]
 target = "xtensa-esp32-none-elf"
 
 [unstable]
