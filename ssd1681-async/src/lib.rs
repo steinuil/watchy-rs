@@ -127,6 +127,8 @@ where
     ) -> Result<(), Error<E>> {
         let options = (red as u8) << 4 | bw as u8;
 
+        // NOTE the datasheet mentions a second byte which is POR 00h but doesn't describe
+        // its behavior.
         self.write_command_data(command::DISPLAY_UPDATE_CONTROL_1, &[options])
             .await
     }
@@ -684,8 +686,9 @@ impl BoosterConfig {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TemperatureSensor {
+    #[default]
     External = 0x48,
     Internal = 0x80,
 }
@@ -762,7 +765,7 @@ pub enum AddressDirection {
     Increment = 1,
 }
 
-/// Which axis the address counter advanced along after each RAM write.
+/// Which axis the address counter advances along after each RAM write.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AddressCounterAxis {
@@ -791,14 +794,14 @@ impl DataEntryMode {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RamOptions {
-    /// Set 0 bytes to black and 1 bytes to white
+    /// Set 0 bits to black and 1 bits to white.
     #[default]
     Normal = 0,
 
-    /// Ignore the RAM entirely and draw the whole window black.
+    /// Ignore the RAM entirely and draw the whole window black or "not red" for red RAM.
     BypassAsZero = 0b100,
 
-    /// Set 0 bytes to white and 1 bytes to black
+    /// Set 0 bits to white and 1 bits to black.
     Invert = 0b1000,
 }
 
@@ -816,16 +819,17 @@ bitflags! {
 
         /// Loads the temperature value from the internal or external sensor.
         ///
-        /// If the temperature was set manually through [`SSD1681::set_temperature`],
+        /// If the temperature was set manually through [`Ssd1681::set_temperature`],
         /// this stage should be omitted.
         const LOAD_TEMPERATURE_VALUE = 1 << 5;
 
         /// Loads the waveform LUT.
         ///
         /// When [`Self::USE_DISPLAY_MODE_2`], loads the mode 2 LUT instead.
+        /// Overwrites any LUT written with [`Ssd1681::write_lut`].
         const LOAD_LUT = 1 << 4;
 
-        /// Toggle between DISPLAY mode 1 and 2.
+        /// Selects display mode 2.
         const USE_DISPLAY_MODE_2 = 1 << 3;
 
         /// Drives the panel, running the loaded waveform against RAM and moving the ink.
@@ -890,16 +894,18 @@ pub enum Vcom {
 }
 
 /// What the source outputs do when a LUT finishes.
-///
-/// The POR value is `02h`, which the datasheet does not name.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EndOption {
     /// Normal.
     Normal = 0x22,
 
     /// Source output level keeps its previous output before power off.
     KeepPreviousLevel = 0x07,
+
+    /// POR value. Unknown behavior.
+    #[default]
+    Reset = 0x02,
 }
 
 #[repr(u8)]
@@ -932,6 +938,14 @@ impl WaveformModes {
             0 => Some(DisplayMode::Mode1),
             _ => Some(DisplayMode::Mode2),
         }
+    }
+
+    pub const fn with(self, ws: u8, mode: DisplayMode) -> Self {
+        if ws >= Self::COUNT {
+            return self;
+        }
+
+        Self((self.0 & !(1 << ws)) | ((mode as u64) << ws))
     }
 }
 

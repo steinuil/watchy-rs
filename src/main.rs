@@ -43,7 +43,7 @@ async fn main(_spawner: Spawner) {
     let time = match time_res {
         Ok(t) if cause != WakeupCause::Reset => t,
         Ok(_) | Err(_) => {
-            let date_time = time::macros::datetime!(2026-10-02 12:15:00 +2);
+            let date_time = time::macros::datetime!(2026-10-16 23:00:00 +2);
 
             watchy.external_rtc.reset().await.unwrap();
             watchy
