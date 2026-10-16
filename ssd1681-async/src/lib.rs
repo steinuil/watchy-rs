@@ -606,12 +606,16 @@ pub struct SourceVoltage {
 }
 
 impl SourceVoltage {
-    pub fn new(
+    pub const fn new(
         vsh1: SourceDrivingVoltage,
         vsh2: SourceDrivingVoltage,
         vsl: NegativeSourceVoltage,
     ) -> Option<Self> {
-        (vsh1 >= vsh2).then_some(SourceVoltage { vsh1, vsh2, vsl })
+        if vsh1.millivolts() >= vsh2.millivolts() {
+            Some(SourceVoltage { vsh1, vsh2, vsl })
+        } else {
+            None
+        }
     }
 }
 
