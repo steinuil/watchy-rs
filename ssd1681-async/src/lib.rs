@@ -113,12 +113,6 @@ where
             .await
     }
 
-    /// Sets the mode used to write bits into RAM.
-    pub async fn set_data_entry_mode(&mut self, mode: DataEntryMode) -> Result<(), Error<E>> {
-        self.write_command_data(command::DATA_ENTRY_MODE_SETTING, &[mode.to_byte()])
-            .await
-    }
-
     /// Sets how the bits in RAM are drawn to the display, both for b/w and red RAM.
     pub async fn set_ram_options(
         &mut self,
@@ -172,6 +166,12 @@ where
     /// Sets the RAM window for subsequent reads and writes, and homes the address counters
     /// to its top-left corner.
     pub async fn set_ram_window(&mut self, window: RamWindow) -> Result<(), Error<E>> {
+        self.write_command_data(
+            command::DATA_ENTRY_MODE_SETTING,
+            &[window.data_entry_mode()],
+        )
+        .await?;
+
         self.write_command_data(
             command::SET_RAM_X_START_END_POSITION,
             &[window.x_start_byte, window.x_end_byte],
@@ -816,19 +816,6 @@ pub enum AddressCounterAxis {
     Y = 1,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct DataEntryMode {
-    pub x: AddressDirection,
-    pub y: AddressDirection,
-    pub counter_axis: AddressCounterAxis,
-}
-
-impl DataEntryMode {
-    pub(crate) const fn to_byte(self) -> u8 {
-        (self.counter_axis as u8) << 2 | (self.y as u8) << 1 | self.x as u8
-    }
-}
-
 /// Control how the bits in RAM are drawn to the display.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1041,6 +1028,7 @@ pub struct RamWindow {
     x_end_byte: u8,
     y_start: u16,
     y_end: u16,
+    counter_axis: AddressCounterAxis,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1050,9 +1038,6 @@ pub enum RamWindowError {
 
     #[error("Y positions are 9-bit (0..={})", RamWindow::MAX_Y)]
     YOutOfRange,
-
-    #[error("start position is past end position")]
-    StartAfterEnd,
 }
 
 impl RamWindow {
@@ -1071,15 +1056,13 @@ impl RamWindow {
         if y_start > Self::MAX_Y || y_end > Self::MAX_Y {
             return Err(RamWindowError::YOutOfRange);
         }
-        if x_start_byte > x_end_byte || y_start > y_end {
-            return Err(RamWindowError::StartAfterEnd);
-        }
 
         Ok(Self {
             x_start_byte,
             x_end_byte,
             y_start,
             y_end,
+            counter_axis: AddressCounterAxis::X,
         })
     }
 
@@ -1099,11 +1082,42 @@ impl RamWindow {
         self.y_end
     }
 
+    pub const fn counter_axis(self) -> AddressCounterAxis {
+        self.counter_axis
+    }
+
+    pub const fn x_direction(self) -> AddressDirection {
+        if self.x_start_byte > self.x_end_byte {
+            AddressDirection::Decrement
+        } else {
+            AddressDirection::Increment
+        }
+    }
+
+    pub const fn y_direction(self) -> AddressDirection {
+        if self.y_start > self.y_end {
+            AddressDirection::Decrement
+        } else {
+            AddressDirection::Increment
+        }
+    }
+
+    pub const fn with_counter_axis(self, counter_axis: AddressCounterAxis) -> Self {
+        Self {
+            counter_axis,
+            ..self
+        }
+    }
+
     /// Exactly how many bytes a RAM write into this window must supply.
     pub const fn byte_len(self) -> usize {
-        let cols = (self.x_end_byte - self.x_start_byte + 1) as usize;
-        let rows = (self.y_end - self.y_start + 1) as usize;
+        let cols = self.x_start_byte.abs_diff(self.x_end_byte) as usize + 1;
+        let rows = self.y_start.abs_diff(self.y_end) as usize + 1;
         cols * rows
+    }
+
+    pub(crate) const fn data_entry_mode(self) -> u8 {
+        (self.counter_axis as u8) << 2 | (self.y_direction() as u8) << 1 | self.x_direction() as u8
     }
 }
 

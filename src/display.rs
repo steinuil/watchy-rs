@@ -10,8 +10,8 @@ use esp_hal::{
     Async,
 };
 use ssd1681_async::{
-    BoosterConfig, BoosterPhase, BorderLut, BorderWaveform, DataEntryMode, DeepSleepMode,
-    DisplayUpdateSequence, DriverOutput, GsTransitionControl, RamWindow, Ssd1681,
+    BoosterConfig, BoosterPhase, BorderLut, BorderWaveform, DeepSleepMode, DisplayUpdateSequence,
+    DriverOutput, GsTransitionControl, RamWindow, Ssd1681,
 };
 
 type Bus<'a> = ExclusiveDevice<spi::master::SpiDma<'a, Async>, gpio::Output<'a>, Delay>;
@@ -257,9 +257,6 @@ impl<'a> Display<'a> {
             .select_temperature_sensor(ssd1681_async::TemperatureSensor::Internal)
             .await?;
         self.controller.set_border_waveform(self.border).await?;
-        self.controller
-            .set_data_entry_mode(DataEntryMode::default())
-            .await?;
         self.controller.set_ram_window(FULL_FRAME).await?;
 
         self.state = PanelState::Initialized {
