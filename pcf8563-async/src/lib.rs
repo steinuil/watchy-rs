@@ -331,16 +331,26 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     async fn control_status_2(&mut self) -> Result<ControlStatus2, Error<E>> {
         let control_status_2 = self.read_register(register::CONTROL_STATUS_2).await?;
 
-        Ok(ControlStatus2::from_bits_retain(control_status_2))
+        Ok(ControlStatus2::from_bits_truncate(control_status_2))
     }
 
     async fn modify_control_status_2<F>(&mut self, f: F) -> Result<(), Error<E>>
     where
         F: FnOnce(ControlStatus2) -> ControlStatus2,
     {
-        let control_status_2 = f(self.control_status_2().await?);
+        // We set the timer and alarm flags before writing because, according to the datasheet,
+        // a value of 1 in these bits is ignored while writing to C/S2 to avoid a race condition.
+        //
+        // Example:
+        // 1. We read C/S2 with the alarm flag to 0
+        // 2. The alarm flag is raised
+        // 3. We write to C/S2 with the alarm flag as it was previously,
+        //    accidentally clearing the flag in the process.
+        let current = self.control_status_2().await?
+            | ControlStatus2::ALARM_FLAG
+            | ControlStatus2::TIMER_FLAG;
 
-        self.write(&[register::CONTROL_STATUS_2, control_status_2.bits()])
+        self.write(&[register::CONTROL_STATUS_2, f(current).bits()])
             .await
     }
 
