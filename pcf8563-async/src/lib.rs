@@ -37,6 +37,9 @@ pub enum Error<E> {
     /// This RTC only supports years between 1900 and 2099.
     #[error("year out of supported 1900..=2099 range")]
     YearOutOfRange,
+
+    #[error("alarm components are out of the valid range")]
+    InvalidAlarm,
 }
 
 fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
@@ -295,6 +298,13 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     pub async fn set_alarm(&mut self, alarm: &AlarmConfig) -> Result<(), Error<E>> {
+        let valid = alarm.minute.is_none_or(|m| m < 60)
+            && alarm.hour.is_none_or(|h| h < 24)
+            && alarm.day.is_none_or(|d| (1..=31).contains(&d));
+        if !valid {
+            return Err(Error::InvalidAlarm);
+        }
+
         self.write(&[
             register::ALARM_MINUTE,
             alarm.minute.map_or(ALARM_DISABLED, dec_to_bcd),
