@@ -153,6 +153,7 @@ pub enum TimerFrequency {
 }
 
 const TIMER_ENABLED: u8 = 0x80;
+const TIMER_DISABLED: u8 = TimerFrequency::_1_60thHz as u8;
 
 pub struct PCF8563<I2C> {
     address: u8,
@@ -320,7 +321,7 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
     }
 
     pub async fn disable_timer(&mut self) -> Result<(), Error<E>> {
-        self.write(&[register::TIMER_CONTROL, 0x00]).await
+        self.write(&[register::TIMER_CONTROL, TIMER_DISABLED]).await
     }
 
     pub async fn clear_timer_flag(&mut self) -> Result<(), Error<E>> {
