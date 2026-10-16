@@ -541,6 +541,32 @@ pub enum SourceDrivingVoltage {
     _17V = 0x4B,
 }
 
+impl SourceDrivingVoltage {
+    pub const fn millivolts(self) -> u16 {
+        let raw = self as u16;
+
+        if raw & 0x80 != 0 {
+            // 2.4 V ..= 8.8 V in 100 mV increments
+            (raw & 0x7f) * 100 + 1000
+        } else {
+            // 9 V .. 17 V in 200mV increments
+            raw * 200 + 2000
+        }
+    }
+}
+
+impl PartialOrd for SourceDrivingVoltage {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SourceDrivingVoltage {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.millivolts().cmp(&other.millivolts())
+    }
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NegativeSourceVoltage {
@@ -572,12 +598,21 @@ pub enum NegativeSourceVoltage {
     M17V = 0x3A,
 }
 
-// TODO enforce vsh1 >= vsh2
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceVoltage {
-    pub vsh1: SourceDrivingVoltage,
-    pub vsh2: SourceDrivingVoltage,
-    pub vsl: NegativeSourceVoltage,
+    vsh1: SourceDrivingVoltage,
+    vsh2: SourceDrivingVoltage,
+    vsl: NegativeSourceVoltage,
+}
+
+impl SourceVoltage {
+    pub fn new(
+        vsh1: SourceDrivingVoltage,
+        vsh2: SourceDrivingVoltage,
+        vsl: NegativeSourceVoltage,
+    ) -> Option<Self> {
+        (vsh1 >= vsh2).then_some(SourceVoltage { vsh1, vsh2, vsl })
+    }
 }
 
 impl Default for SourceVoltage {
