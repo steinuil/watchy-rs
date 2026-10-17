@@ -38,22 +38,21 @@ async fn main(_spawner: Spawner) {
 
     println!("wakeup cause: {:?}", cause);
 
-    let time_res = watchy.external_rtc.read_time().await;
+    let time_res = watchy
+        .external_rtc
+        .datetime()
+        .await
+        .map(|t| t.to_offset(time::macros::offset!(+2)));
 
     let time = match time_res {
-        Ok(t) if cause != WakeupCause::Reset => t,
+        Ok(t) if cause != WakeupCause::Reset => t.time(),
         Ok(_) | Err(_) => {
             let date_time = time::macros::datetime!(2026-10-16 23:00:00 +2);
 
             watchy.external_rtc.reset().await.unwrap();
             watchy
                 .external_rtc
-                .set_date(date_time.date())
-                .await
-                .unwrap();
-            watchy
-                .external_rtc
-                .set_time(date_time.time())
+                .set_datetime(date_time.to_utc())
                 .await
                 .unwrap();
 

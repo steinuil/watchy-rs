@@ -26,6 +26,19 @@ pub enum Error<E> {
     #[error("invalid time: {0}")]
     Time(time::Error),
 
+    #[error(
+        "invalid datetime: {year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} (weekday: {weekday})"
+    )]
+    InvalidDateTime {
+        year: i32,
+        month: u8,
+        day: u8,
+        hour: u8,
+        minute: u8,
+        second: u8,
+        weekday: u8,
+    },
+
     /// The weekday reported by the RTC is not valid or does not match with the date.
     #[error("invalid time: weekday is invalid or does not match the date")]
     InvalidWeekday,
@@ -42,57 +55,17 @@ pub enum Error<E> {
     InvalidAlarm,
 }
 
-fn parse_weekday<E>(weekday: u8) -> Result<time::Weekday, Error<E>> {
+fn parse_weekday(weekday: u8) -> Option<time::Weekday> {
     match weekday {
-        0 => Ok(time::Weekday::Sunday),
-        1 => Ok(time::Weekday::Monday),
-        2 => Ok(time::Weekday::Tuesday),
-        3 => Ok(time::Weekday::Wednesday),
-        4 => Ok(time::Weekday::Thursday),
-        5 => Ok(time::Weekday::Friday),
-        6 => Ok(time::Weekday::Saturday),
-        _ => Err(Error::InvalidWeekday),
+        0 => Some(time::Weekday::Sunday),
+        1 => Some(time::Weekday::Monday),
+        2 => Some(time::Weekday::Tuesday),
+        3 => Some(time::Weekday::Wednesday),
+        4 => Some(time::Weekday::Thursday),
+        5 => Some(time::Weekday::Friday),
+        6 => Some(time::Weekday::Saturday),
+        _ => None,
     }
-}
-
-fn parse_date<E>(buf: &[u8]) -> Result<time::Date, Error<E>> {
-    let day = bcd_to_dec(buf[0] & mask::DAY);
-    let weekday = bcd_to_dec(buf[1] & mask::WEEKDAY);
-
-    let month_bcd = buf[2];
-    let year_bcd = buf[3];
-
-    let month = bcd_to_dec(month_bcd & mask::MONTH);
-    let year = bcd_to_dec(year_bcd) as i32
-        + if month_bcd & mask::CENTURY != 0 {
-            1900
-        } else {
-            2000
-        };
-
-    let month = time::Month::try_from(month).map_err(|e| Error::Time(e.into()))?;
-    let weekday = parse_weekday(weekday)?;
-
-    let date =
-        time::Date::from_calendar_date(year, month, day).map_err(|e| Error::Time(e.into()))?;
-
-    if date.weekday() != weekday {
-        return Err(Error::InvalidWeekday);
-    }
-
-    Ok(date)
-}
-
-fn parse_time<E>(buf: &[u8]) -> Result<time::Time, Error<E>> {
-    if buf[0] & mask::VOLTAGE_LOW != 0 {
-        return Err(Error::ClockIntegrityLost);
-    }
-
-    let second = bcd_to_dec(buf[0] & mask::SECOND);
-    let minute = bcd_to_dec(buf[1] & mask::MINUTE);
-    let hour = bcd_to_dec(buf[2] & mask::HOUR);
-
-    time::Time::from_hms(hour, minute, second).map_err(|e| Error::Time(e.into()))
 }
 
 fn parse_alarm_component(byte: u8, mask: u8) -> Option<u8> {
@@ -198,41 +171,62 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         Ok(seconds & mask::VOLTAGE_LOW == 0)
     }
 
-    pub async fn read_date(&mut self) -> Result<time::Date, Error<E>> {
-        let mut buf = [0; 4];
-        self.read_registers(register::DAY, &mut buf).await?;
-
-        parse_date(&buf)
-    }
-
-    pub async fn read_time(&mut self) -> Result<time::Time, Error<E>> {
-        let mut buf = [0; 3];
-        self.read_registers(register::SECOND, &mut buf).await?;
-
-        parse_time(&buf)
-    }
-
-    pub async fn read_datetime(&mut self) -> Result<time::PrimitiveDateTime, Error<E>> {
+    /// Reads the current date/time.
+    ///
+    /// Returns an [`Error::InvalidDateTime`] containing the values returned by
+    /// the RTC when one of the components is invalid.
+    pub async fn datetime(&mut self) -> Result<time::UtcDateTime, Error<E>> {
         let mut buf = [0; 7];
         self.read_registers(register::SECOND, &mut buf).await?;
 
-        let time = parse_time(&buf[0..3])?;
-        let date = parse_date(&buf[3..7])?;
+        if buf[0] & mask::VOLTAGE_LOW != 0 {
+            return Err(Error::ClockIntegrityLost);
+        }
 
-        Ok(time::PrimitiveDateTime::new(date, time))
+        let second = bcd_to_dec(buf[0] & mask::SECOND);
+        let minute = bcd_to_dec(buf[1] & mask::MINUTE);
+        let hour = bcd_to_dec(buf[2] & mask::HOUR);
+
+        let day = bcd_to_dec(buf[3] & mask::DAY);
+        let weekday = bcd_to_dec(buf[4] & mask::WEEKDAY);
+
+        let month_bcd = buf[5];
+        let month = bcd_to_dec(month_bcd & mask::MONTH);
+        let year = bcd_to_dec(buf[6]) as i32
+            + if month_bcd & mask::CENTURY != 0 {
+                1900
+            } else {
+                2000
+            };
+
+        let invalid = || Error::<E>::InvalidDateTime {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            weekday,
+        };
+
+        let time = time::Time::from_hms(hour, minute, second).map_err(|_| invalid())?;
+
+        let month = time::Month::try_from(month).map_err(|_| invalid())?;
+        let weekday = parse_weekday(weekday).ok_or_else(invalid)?;
+
+        let date = time::Date::from_calendar_date(year, month, day).map_err(|_| invalid())?;
+
+        if date.weekday() != weekday {
+            return Err(invalid());
+        }
+
+        Ok(time::UtcDateTime::new(date, time))
     }
 
-    pub async fn set_time(&mut self, time: time::Time) -> Result<(), Error<E>> {
-        self.write(&[
-            register::SECOND,
-            dec_to_bcd(time.second()),
-            dec_to_bcd(time.minute()),
-            dec_to_bcd(time.hour()),
-        ])
-        .await
-    }
+    pub async fn set_datetime(&mut self, datetime: time::UtcDateTime) -> Result<(), Error<E>> {
+        let date = datetime.date();
+        let time = datetime.time();
 
-    pub async fn set_date(&mut self, date: time::Date) -> Result<(), Error<E>> {
         if !(1900..2099).contains(&date.year()) {
             return Err(Error::YearOutOfRange);
         }
@@ -248,7 +242,10 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         };
 
         self.write(&[
-            register::DAY,
+            register::SECOND,
+            dec_to_bcd(time.second()),
+            dec_to_bcd(time.minute()),
+            dec_to_bcd(time.hour()),
             dec_to_bcd(date.day()),
             dec_to_bcd(date.weekday().number_days_from_sunday()),
             month_bcd,
@@ -292,7 +289,7 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             hour: parse_alarm_component(buf[1], mask::HOUR),
             day: parse_alarm_component(buf[2], mask::DAY),
             weekday: parse_alarm_component(buf[3], mask::WEEKDAY)
-                .map(parse_weekday)
+                .map(|w| parse_weekday(w).ok_or(Error::InvalidWeekday))
                 .transpose()?,
         })
     }
