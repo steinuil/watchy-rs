@@ -272,6 +272,13 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             .contains(ControlStatus2::ALARM_INTERRUPT_ENABLED))
     }
 
+    pub async fn alarm_flag(&mut self) -> Result<bool, Error<E>> {
+        Ok(self
+            .control_status_2()
+            .await?
+            .contains(ControlStatus2::ALARM_FLAG))
+    }
+
     pub async fn clear_alarm_flag(&mut self) -> Result<(), Error<E>> {
         self.modify_control_status_2(|r| r.difference(ControlStatus2::ALARM_FLAG))
             .await
@@ -327,6 +334,13 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
 
     pub async fn disable_timer(&mut self) -> Result<(), Error<E>> {
         self.write(&[register::TIMER_CONTROL, TIMER_DISABLED]).await
+    }
+
+    pub async fn timer_flag(&mut self) -> Result<bool, Error<E>> {
+        Ok(self
+            .control_status_2()
+            .await?
+            .contains(ControlStatus2::TIMER_FLAG))
     }
 
     pub async fn clear_timer_flag(&mut self) -> Result<(), Error<E>> {
