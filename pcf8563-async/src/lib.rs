@@ -1,5 +1,7 @@
 #![no_std]
 
+use core::num::NonZero;
+
 use embedded_hal_async::i2c::I2c;
 
 fn dec_to_bcd(n: u8) -> u8 {
@@ -231,6 +233,10 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         Ok(time::UtcDateTime::new(date, time))
     }
 
+    /// Sets the current date/time.
+    ///
+    /// Returns [`Error::YearOutOfRange`] when the year component is outside of the `1901..=2099`
+    /// range supported by this RTC.
     pub async fn set_datetime(&mut self, datetime: time::UtcDateTime) -> Result<(), Error<E>> {
         let date = datetime.date();
         let time = datetime.time();
@@ -331,19 +337,25 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         .await
     }
 
+    /// Configure a timer that sets the [`Self::timer_flag`] every `ticks`
+    /// at the specified `frequency`.
+    ///
+    /// The timer interrupt must be enabled separately using
+    /// [`Self::enable_timer_interrupt`].
     pub async fn set_timer(
         &mut self,
         frequency: TimerFrequency,
-        ticks: u8,
+        ticks: NonZero<u8>,
     ) -> Result<(), Error<E>> {
         self.write(&[
             register::TIMER_CONTROL,
             TIMER_ENABLED | frequency as u8,
-            ticks,
+            ticks.get(),
         ])
         .await
     }
 
+    /// Disable the timer.
     pub async fn disable_timer(&mut self) -> Result<(), Error<E>> {
         self.write(&[register::TIMER_CONTROL, TIMER_DISABLED]).await
     }

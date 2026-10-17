@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::fmt::Write as _;
+use core::{fmt::Write as _, num::NonZeroU8};
 
 use arrayvec::ArrayString;
 use embassy_executor::Spawner;
@@ -65,7 +65,7 @@ async fn main(_spawner: Spawner) {
 
         watchy
             .external_rtc
-            .set_timer(pcf8563_async::TimerFrequency::_1_60thHz, 1)
+            .set_timer(pcf8563_async::TimerFrequency::_1_60thHz, NonZeroU8::MIN)
             .await
             .unwrap();
 
