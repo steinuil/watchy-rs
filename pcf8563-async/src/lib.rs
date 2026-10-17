@@ -22,10 +22,6 @@ pub enum Error<E> {
     #[error(transparent)]
     Bus(E),
 
-    /// The date/time reported by the RTC is not valid.
-    #[error("invalid time: {0}")]
-    Time(time::Error),
-
     #[error(
         "invalid datetime: {year}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} (weekday: {weekday})"
     )]
