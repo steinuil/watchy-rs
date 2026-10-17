@@ -223,7 +223,7 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         let date = datetime.date();
         let time = datetime.time();
 
-        if !(1900..2099).contains(&date.year()) {
+        if !(1900..=2099).contains(&date.year()) {
             return Err(Error::YearOutOfRange);
         }
 
