@@ -124,8 +124,20 @@ pub enum TimerFrequency {
     _1_60thHz = 0b11,
 }
 
+/// Frequency output at CLKOUT pin.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ClockOutputFrequency {
+    #[default]
+    _32_768Hz = 0b00,
+    _1024Hz = 0b01,
+    _32Hz = 0b10,
+    _1Hz = 0b11,
+}
+
 const TIMER_ENABLED: u8 = 0x80;
 const TIMER_DISABLED: u8 = TimerFrequency::_1_60thHz as u8;
+const CLOCK_OUTPUT_ENABLED: u8 = 0x80;
 
 pub struct PCF8563<I2C> {
     address: u8,
@@ -354,6 +366,39 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
                 .union(ControlStatus2::TIMER_INTERRUPT_ENABLED)
         })
         .await
+    }
+
+    /// Returns the frequency output at the CLKOUT pin, or `None` when disabled.
+    pub async fn clock_output(&mut self) -> Result<Option<ClockOutputFrequency>, Error<E>> {
+        let value = self.read_register(register::CLOCK_OUTPUT).await?;
+
+        if value & CLOCK_OUTPUT_ENABLED == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(match value & 0b11 {
+            0b00 => ClockOutputFrequency::_32_768Hz,
+            0b01 => ClockOutputFrequency::_1024Hz,
+            0b10 => ClockOutputFrequency::_32Hz,
+            _ => ClockOutputFrequency::_1Hz,
+        }))
+    }
+
+    /// Enables the CLKOUT output and sets the specified frequency.
+    pub async fn enable_clock_output(
+        &mut self,
+        frequency: ClockOutputFrequency,
+    ) -> Result<(), Error<E>> {
+        self.write(&[
+            register::CLOCK_OUTPUT,
+            CLOCK_OUTPUT_ENABLED | frequency as u8,
+        ])
+        .await
+    }
+
+    /// Inhibit CLKOUT output and sets it to high impedance.
+    pub async fn disable_clock_output(&mut self) -> Result<(), Error<E>> {
+        self.write(&[register::CLOCK_OUTPUT, 0x00]).await
     }
 
     async fn control_status_2(&mut self) -> Result<ControlStatus2, Error<E>> {
