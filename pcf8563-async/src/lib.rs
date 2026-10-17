@@ -155,8 +155,8 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
             ALARM_DISABLED, // hour alarm value reset to 00
             ALARM_DISABLED, // day alarm value reset to 00
             ALARM_DISABLED, // weekday alarm value reset to 00
-            0x00,           // set SQW
-            0x00,           // timer off
+            0x00,           // CLKOUT off
+            TIMER_DISABLED, // timer off
         ])
         .await
     }
