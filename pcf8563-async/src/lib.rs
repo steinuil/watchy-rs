@@ -35,16 +35,16 @@ pub enum Error<E> {
         weekday: u8,
     },
 
-    /// The weekday reported by the RTC is not valid or does not match with the date.
-    #[error("invalid time: weekday is invalid or does not match the date")]
+    /// The weekday reported by the RTC is not valid.
+    #[error("invalid time: weekday is invalid")]
     InvalidWeekday,
 
     /// Clock integrity was compromised due to low voltage being supplied to the chip.
     #[error("clock integrity not guaranteed")]
     ClockIntegrityLost,
 
-    /// This RTC only supports years between 1900 and 2099.
-    #[error("year out of supported 1900..=2099 range")]
+    /// This RTC only supports years between 1901 and 2099.
+    #[error("year out of supported 1901..=2099 range")]
     YearOutOfRange,
 
     #[error("alarm components are out of the valid range")]
@@ -223,7 +223,9 @@ impl<I2C: I2c<Error = E>, E> PCF8563<I2C> {
         let date = datetime.date();
         let time = datetime.time();
 
-        if !(1900..=2099).contains(&date.year()) {
+        // The RTC actually supports the 1900..=2099 range, but it treats 1900 as a leap year,
+        // making it possible to eventually read 1900-02-29 which is not a valid year.
+        if !(1901..=2099).contains(&date.year()) {
             return Err(Error::YearOutOfRange);
         }
 
